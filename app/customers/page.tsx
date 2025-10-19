@@ -143,6 +143,33 @@ export default function CustomersPage() {
     }
   };
 
+
+  // Helper functions for button classes
+const getActiveButtonClasses = (color: string) => {
+  const colorClasses = {
+    blue: 'bg-blue-500 text-white shadow-lg shadow-blue-500/25',
+    red: 'bg-red-500 text-white shadow-lg shadow-red-500/25',
+    orange: 'bg-orange-500 text-white shadow-lg shadow-orange-500/25',
+    indigo: 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25',
+    pink: 'bg-pink-500 text-white shadow-lg shadow-pink-500/25',
+    gray: 'bg-gray-500 text-white shadow-lg shadow-gray-500/25',
+  };
+  return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
+};
+
+const getInactiveButtonClasses = (color: string) => {
+  const colorClasses = {
+    blue: 'bg-white text-gray-700 border border-gray-300 hover:border-blue-300 hover:bg-blue-50 shadow-sm',
+    red: 'bg-white text-gray-700 border border-gray-300 hover:border-red-300 hover:bg-red-50 shadow-sm',
+    orange: 'bg-white text-gray-700 border border-gray-300 hover:border-orange-300 hover:bg-orange-50 shadow-sm',
+    indigo: 'bg-white text-gray-700 border border-gray-300 hover:border-indigo-300 hover:bg-indigo-50 shadow-sm',
+    pink: 'bg-white text-gray-700 border border-gray-300 hover:border-pink-300 hover:bg-pink-50 shadow-sm',
+    gray: 'bg-white text-gray-700 border border-gray-300 hover:border-gray-300 hover:bg-gray-50 shadow-sm',
+  };
+  return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
+};
+
+
   const handleEditCustomer = (customer: Customer) => {
     setEditingCustomer(customer);
     setIsCustomerModalOpen(true);
@@ -946,44 +973,44 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
 
               {/* Filter Buttons */}
               <div className="flex flex-wrap gap-3 justify-start lg:justify-end">
-                {[
-                  { label: "All Members", key: "all", color: "blue" },
-                  { label: `Today (${getDayName(0)})`, key: "today", color: "red" },
-                  { label: `Tomorrow (${getDayName(1)})`, key: "tomorrow", color: "orange" },
-                  { label: "Expired", key: "expired", color: "red" },
-                ].map((btn) => (
-                  <button
-                    key={btn.key}
-                    onClick={() => filterCustomers(btn.key)}
-                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
-                      selectedFilter === btn.key
-                        ? `bg-${btn.color}-500 text-white shadow-lg shadow-${btn.color}-500/25`
-                        : `bg-white text-gray-700 border border-gray-300 hover:border-${btn.color}-300 hover:bg-${btn.color}-50 shadow-sm`
-                    }`}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
+              {[
+                { label: "All Members", key: "all", color: "blue" as const },
+                { label: `Today (${getDayName(0)})`, key: "today", color: "red" as const },
+                { label: `Tomorrow (${getDayName(1)})`, key: "tomorrow", color: "orange" as const },
+                { label: "Expired", key: "expired", color: "red" as const },
+              ].map((btn) => (
+                <button
+                  key={btn.key}
+                  onClick={() => filterCustomers(btn.key)}
+                  className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                    selectedFilter === btn.key
+                      ? getActiveButtonClasses(btn.color)
+                      : getInactiveButtonClasses(btn.color)
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
 
-                {/* Gender Filters */}
-                {[
-                  { label: "Male", key: "male", color: "indigo" },
-                  { label: "Female", key: "female", color: "pink" },
-                  { label: "All Genders", key: "all", color: "gray" },
-                ].map((btn) => (
-                  <button
-                    key={btn.key}
-                    onClick={() => handleGenderFilter(btn.key)}
-                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
-                      genderFilter === btn.key
-                        ? `bg-${btn.color}-500 text-white shadow-lg shadow-${btn.color}-500/25`
-                        : `bg-white text-gray-700 border border-gray-300 hover:border-${btn.color}-300 hover:bg-${btn.color}-50 shadow-sm`
-                    }`}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
+              {/* Gender Filters */}
+              {[
+                { label: "Male", key: "male", color: "indigo" as const },
+                { label: "Female", key: "female", color: "pink" as const },
+                { label: "All Genders", key: "all", color: "gray" as const },
+              ].map((btn) => (
+                <button
+                  key={btn.key}
+                  onClick={() => handleGenderFilter(btn.key)}
+                  className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                    genderFilter === btn.key
+                      ? getActiveButtonClasses(btn.color)
+                      : getInactiveButtonClasses(btn.color)
+                  }`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
             </div>
 
             {/* Action Buttons */}
@@ -1013,7 +1040,7 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
                               transform hover:scale-105"
                   >
                     <MessageCircle className="w-5 h-5" />
-                    <span>WhatsApp ({selectedCustomers.length})</span>
+                    <span>Send Notification ({selectedCustomers.length})</span>
                   </button>
                 </>
               )}
