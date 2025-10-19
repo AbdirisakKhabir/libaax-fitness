@@ -8,11 +8,25 @@ interface ReportDashboardProps {
 export default function ReportDashboard({ customers }: ReportDashboardProps) {
   const reports = useMemo(() => {
     const total = customers.length;
-    const active = customers.filter(c => c.isActive && new Date(c.expireDate) >= new Date()).length;
-    const expired = customers.filter(c => !c.isActive || new Date(c.expireDate) < new Date()).length;
+    
+    // Safe date filtering with null checks
+    const active = customers.filter(c => {
+      if (!c.isActive) return false;
+      if (!c.expireDate) return true; // No expiry date means active
+      const expireDate = c.expireDate instanceof Date ? c.expireDate : new Date(c.expireDate);
+      return expireDate >= new Date();
+    }).length;
+
+    const expired = customers.filter(c => {
+      if (!c.isActive) return true;
+      if (!c.expireDate) return false; // No expiry date means not expired
+      const expireDate = c.expireDate instanceof Date ? c.expireDate : new Date(c.expireDate);
+      return expireDate < new Date();
+    }).length;
     
     const expiringThisWeek = customers.filter(c => {
-      const expireDate = new Date(c.expireDate);
+      if (!c.expireDate) return false;
+      const expireDate = c.expireDate instanceof Date ? c.expireDate : new Date(c.expireDate);
       const today = new Date();
       const nextWeek = new Date();
       nextWeek.setDate(today.getDate() + 7);
@@ -20,9 +34,9 @@ export default function ReportDashboard({ customers }: ReportDashboardProps) {
     });
 
     const newThisMonth = customers.filter(c => {
-      const registered = new Date(c.registeredDate);
+      const registerDate = c.registerDate instanceof Date ? c.registerDate : new Date(c.registerDate);
       const today = new Date();
-      return registered.getMonth() === today.getMonth() && registered.getFullYear() === today.getFullYear();
+      return registerDate.getMonth() === today.getMonth() && registerDate.getFullYear() === today.getFullYear();
     });
 
     const revenue = customers.filter(c => c.isActive).length * 49.99; // Example monthly fee
@@ -36,6 +50,30 @@ export default function ReportDashboard({ customers }: ReportDashboardProps) {
       revenue
     };
   }, [customers]);
+
+  // Helper function to safely format dates (handles both string and Date objects)
+  const safeFormatDate = (date: Date | string | null) => {
+    if (!date) return 'No expiry';
+    const dateObj = date instanceof Date ? date : new Date(date);
+    return dateObj.toLocaleDateString();
+  };
+
+  // Helper function to check if customer is expiring this week
+  const isExpiringThisWeek = (customer: Customer) => {
+    if (!customer.expireDate) return false;
+    const expireDate = customer.expireDate instanceof Date ? customer.expireDate : new Date(customer.expireDate);
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+    return expireDate >= today && expireDate <= nextWeek;
+  };
+
+  // Helper function to check if customer is new this month
+  const isNewThisMonth = (customer: Customer) => {
+    const registerDate = customer.registerDate instanceof Date ? customer.registerDate : new Date(customer.registerDate);
+    const today = new Date();
+    return registerDate.getMonth() === today.getMonth() && registerDate.getFullYear() === today.getFullYear();
+  };
 
   return (
     <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 mb-8 border border-white/20">
@@ -103,13 +141,7 @@ export default function ReportDashboard({ customers }: ReportDashboardProps) {
           </h3>
           <div className="space-y-3">
             {customers
-              .filter(c => {
-                const expireDate = new Date(c.expireDate);
-                const today = new Date();
-                const nextWeek = new Date();
-                nextWeek.setDate(today.getDate() + 7);
-                return expireDate >= today && expireDate <= nextWeek;
-              })
+              .filter(isExpiringThisWeek)
               .slice(0, 5)
               .map(customer => (
                 <div key={customer.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
@@ -118,10 +150,13 @@ export default function ReportDashboard({ customers }: ReportDashboardProps) {
                     <p className="text-gray-400 text-sm">{customer.phone}</p>
                   </div>
                   <span className="text-orange-400 text-sm font-semibold">
-                    {new Date(customer.expireDate).toLocaleDateString()}
+                    {safeFormatDate(customer.expireDate)}
                   </span>
                 </div>
               ))}
+            {reports.expiringThisWeek === 0 && (
+              <p className="text-gray-400 text-center py-4">No memberships expiring this week</p>
+            )}
           </div>
         </div>
 
@@ -134,11 +169,7 @@ export default function ReportDashboard({ customers }: ReportDashboardProps) {
           </h3>
           <div className="space-y-3">
             {customers
-              .filter(c => {
-                const registered = new Date(c.registeredDate);
-                const today = new Date();
-                return registered.getMonth() === today.getMonth() && registered.getFullYear() === today.getFullYear();
-              })
+              .filter(isNewThisMonth)
               .slice(0, 5)
               .map(customer => (
                 <div key={customer.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
@@ -147,10 +178,13 @@ export default function ReportDashboard({ customers }: ReportDashboardProps) {
                     <p className="text-gray-400 text-sm">{customer.phone}</p>
                   </div>
                   <span className="text-green-400 text-sm font-semibold">
-                    {new Date(customer.registeredDate).toLocaleDateString()}
+                    {safeFormatDate(customer.registerDate)}
                   </span>
                 </div>
               ))}
+            {reports.newThisMonth === 0 && (
+              <p className="text-gray-400 text-center py-4">No new members this month</p>
+            )}
           </div>
         </div>
       </div>

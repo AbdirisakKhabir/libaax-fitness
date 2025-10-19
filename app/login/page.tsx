@@ -2,38 +2,78 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signIn } from 'next-auth/react';
 import Swal from 'sweetalert2';
-
+import { Lock } from 'lucide-react'
+import Link from 'next/link';
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-
-    // Simple demo authentication
-    if (email === 'admin@gym.com' && password === 'password') {
+    
+    if (!username || !password) {
       await Swal.fire({
-        icon: 'success',
-        title: 'Login Successful!',
-        text: 'Welcome to GYM Management System',
+        icon: 'error',
+        title: 'Missing Fields',
+        text: 'Please enter both username and password',
         timer: 2000,
         showConfirmButton: false,
       });
-      router.push('/customers');
-    } else {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const result = await signIn('credentials', {
+        username,
+        password,
+        redirect: false,
+      });
+
+      console.log('Login result:', result); // Debug log
+
+      if (result?.error) {
+        throw new Error(result.error === 'CredentialsSignin' 
+          ? 'Invalid username or password' 
+          : result.error
+        );
+      }
+
+      // Check if sign in was successful
+      if (result?.ok && !result.error) {
+        await Swal.fire({
+          icon: 'success',
+          title: 'Login Successful!',
+          text: `Welcome back, ${username}!`,
+          timer: 2000,
+          showConfirmButton: false,
+        });
+
+        // Use window.location to force a full page reload and establish session
+        window.location.href = '/customers';
+      } else {
+        throw new Error('Login failed');
+      }
+
+    } catch (error) {
+      console.error('Login error:', error);
       await Swal.fire({
         icon: 'error',
         title: 'Login Failed',
-        text: 'Invalid email or password',
+        text: error instanceof Error ? error.message : 'Invalid username or password',
         timer: 2000,
         showConfirmButton: false,
       });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (
@@ -44,11 +84,11 @@ export default function LoginPage() {
           {/* Header */}
           <div className="text-center mb-8">
             <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <img
-              src='./logo.jpg'
-              alt="Company Logo"
-              className="w-22 h-22 rounded-xl object-cover border-2 border-gray-200"
-            />
+              <img
+                src='./logo.jpg'
+                alt="Company Logo"
+                className="w-22 h-22 rounded-xl object-cover border-2 border-gray-200"
+              />
             </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
             <p className="text-gray-600">Sign in to your Libaax Fitness account</p>
@@ -58,21 +98,21 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Email Address
+                Username
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-10 pr-4 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-gray-900 placeholder-gray-500"
-                  placeholder="Enter your email"
+                  placeholder="Enter your username"
                 />
               </div>
             </div>
@@ -98,19 +138,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
-                />
-                <span className="ml-2 text-sm text-gray-700">Remember me</span>
-              </label>
-              <button type="button" className="text-sm text-blue-600 hover:text-blue-500 font-medium">
-                Forgot password?
-              </button>
-            </div>
-
             <button
               type="submit"
               disabled={isLoading}
@@ -123,37 +150,20 @@ export default function LoginPage() {
                 </>
               ) : (
                 <>
-                  <span>🔐</span>
+                  <span>{ <Lock />}</span>
                   <span>Sign In</span>
                 </>
               )}
             </button>
           </form>
 
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
-            <p className="text-sm text-blue-800 text-center">
-              <strong>Demo Credentials:</strong><br />
-              Email: admin@gym.com<br />
-              Password: password
-            </p>
-          </div>
-
-          {/* Footer */}
-          <div className="mt-8 text-center">
-            <p className="text-gray-600 text-sm">
-              Don't have an account?{' '}
-              <button className="text-blue-600 hover:text-blue-500 font-medium">
-                Contact Administrator
-              </button>
-            </p>
-          </div>
+  
         </div>
 
         {/* App Info */}
         <div className="text-center mt-8">
           <p className="text-gray-600 text-sm">
-            💪 Libaax Fitness Management System v1.0
+           Powered By <Link href="https://taamsolutions.net" target="_blank" className="text-blue-600 hover:underline font-semibold">Taam Solutions</Link>
           </p>
         </div>
       </div>

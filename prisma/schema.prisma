@@ -1,0 +1,55 @@
+// schema.prisma
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// =========================
+// User Model
+// =========================
+model User {
+  id        Int       @id @default(autoincrement())
+  username  String    @unique
+  password  String
+  role      String
+  payments  Payment[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Customer {
+  id           Int       @id @default(autoincrement())
+  name         String
+  phone        String?   @unique
+  image        String?
+  registerDate DateTime
+  expireDate   DateTime?
+  fee          Float
+  isActive     Boolean   @default(true)
+  gender       String
+  balance      Float     @default(0)
+  payments     Payment[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// =========================
+// Payment Model
+// =========================
+model Payment {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  userId     Int
+  paidAmount Float
+  discount   Float    @default(0)
+  balance    Float
+  date       DateTime
+
+  // Relationships
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

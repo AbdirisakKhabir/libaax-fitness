@@ -17,6 +17,14 @@ export default function CustomerCard({ customer, isSelected, onSelect, onClick }
     setIsClient(true);
   }, []);
 
+  // Safe date parsing with null checks
+  const expireDate = customer.expireDate ? new Date(customer.expireDate) : null;
+  const registerDate = new Date(customer.registerDate);
+  const isExpired = expireDate ? expireDate < new Date() : false;
+  const daysUntilExpiry = expireDate 
+    ? Math.ceil((expireDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
   if (!isClient) {
     return (
       <div className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 p-6 animate-pulse">
@@ -36,19 +44,16 @@ export default function CustomerCard({ customer, isSelected, onSelect, onClick }
     );
   }
 
-  const isExpired = new Date(customer.expireDate) < new Date();
-  const daysUntilExpiry = Math.ceil(
-    (new Date(customer.expireDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-  );
-
   const getStatusColor = () => {
+    if (!expireDate) return 'bg-gray-500 text-white';
     if (isExpired) return 'bg-red-500 text-white';
-    if (daysUntilExpiry <= 3) return 'bg-orange-500 text-white';
-    if (daysUntilExpiry <= 7) return 'bg-yellow-500 text-white';
+    if (daysUntilExpiry && daysUntilExpiry <= 3) return 'bg-orange-500 text-white';
+    if (daysUntilExpiry && daysUntilExpiry <= 7) return 'bg-yellow-500 text-white';
     return 'bg-green-500 text-white';
   };
 
   const getStatusText = () => {
+    if (!expireDate) return 'No Expiry Date';
     if (isExpired) return 'Expired';
     if (daysUntilExpiry === 0) return 'Expires Today';
     if (daysUntilExpiry === 1) return '1 Day Left';
@@ -56,14 +61,24 @@ export default function CustomerCard({ customer, isSelected, onSelect, onClick }
   };
 
   const getStatusIcon = () => {
+    if (!expireDate) return '⚫';
     if (isExpired) return '🔴';
-    if (daysUntilExpiry <= 3) return '🟠';
-    if (daysUntilExpiry <= 7) return '🟡';
+    if (daysUntilExpiry && daysUntilExpiry <= 3) return '🟠';
+    if (daysUntilExpiry && daysUntilExpiry <= 7) return '🟡';
     return '🟢';
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+  const formatDate = (date: Date | string) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const formatExpireDate = (date: Date | string | null) => {
+    if (!date) return 'No expiry date';
+    return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
@@ -71,9 +86,8 @@ export default function CustomerCard({ customer, isSelected, onSelect, onClick }
   };
 
   const getMembershipDuration = () => {
-    const registered = new Date(customer.registeredDate);
     const now = new Date();
-    const months = (now.getFullYear() - registered.getFullYear()) * 12 + (now.getMonth() - registered.getMonth());
+    const months = (now.getFullYear() - registerDate.getFullYear()) * 12 + (now.getMonth() - registerDate.getMonth());
     return months > 0 ? `${months} month${months > 1 ? 's' : ''}` : 'New Member';
   };
 
@@ -160,7 +174,7 @@ export default function CustomerCard({ customer, isSelected, onSelect, onClick }
               <span className="text-sm font-medium text-gray-700">Registered:</span>
             </div>
             <p className="text-sm text-gray-900 font-semibold">
-              {formatDate(customer.registeredDate)}
+              {formatDate(registerDate)}
             </p>
           </div>
           
@@ -172,7 +186,7 @@ export default function CustomerCard({ customer, isSelected, onSelect, onClick }
               <span className="text-sm font-medium text-gray-700">Expires:</span>
             </div>
             <p className="text-sm text-gray-900 font-semibold">
-              {formatDate(customer.expireDate)}
+              {formatExpireDate(customer.expireDate)}
             </p>
           </div>
 
