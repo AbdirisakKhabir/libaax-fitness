@@ -1049,44 +1049,108 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
         </div>
           
           {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="flex justify-center items-center space-x-4 mt-8">
-            <button
-              onClick={() => paginate(currentPage - 1)}
-              disabled={currentPage === 1}
-              className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Previous</span>
-            </button>
-            
-            <div className="flex space-x-2">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+            {/* Smart Pagination */}
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center space-x-4 mt-8">
                 <button
-                  key={page}
-                  onClick={() => paginate(page)}
-                  className={`w-10 h-10 rounded-lg font-semibold ${
-                    currentPage === page
-                      ? 'bg-blue-500 text-white'
-                      : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
+                  onClick={() => paginate(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
                 >
-                  {page}
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Previous</span>
                 </button>
-              ))}
-            </div>
-            
-            <button
-              onClick={() => paginate(currentPage + 1)}
-              disabled={currentPage === totalPages}
-              className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              <span>Next</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+                
+                <div className="flex space-x-1">
+                  {/* Generate smart page numbers */}
+                  {(() => {
+                    const pages = [];
+                    const showPages = 3; // Number of pages to show besides first/last
+                    
+                    // Always show first page
+                    pages.push(
+                      <button
+                        key={1}
+                        onClick={() => paginate(1)}
+                        className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
+                          currentPage === 1
+                            ? 'bg-blue-500 text-white shadow-md'
+                            : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        1
+                      </button>
+                    );
 
+                    // Show ellipsis if there's a gap
+                    if (currentPage > showPages + 1) {
+                      pages.push(
+                        <span key="ellipsis1" className="w-10 h-10 flex items-center justify-center text-gray-500">
+                          ...
+                        </span>
+                      );
+                    }
+
+                    // Show pages around current page
+                    for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+                      if (i === 1 || i === totalPages) continue; // Skip first/last as they're handled separately
+                      pages.push(
+                        <button
+                          key={i}
+                          onClick={() => paginate(i)}
+                          className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
+                            currentPage === i
+                              ? 'bg-blue-500 text-white shadow-md'
+                              : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {i}
+                        </button>
+                      );
+                    }
+
+                    // Show ellipsis if there's a gap at the end
+                    if (currentPage < totalPages - showPages) {
+                      pages.push(
+                        <span key="ellipsis2" className="w-10 h-10 flex items-center justify-center text-gray-500">
+                          ...
+                        </span>
+                      );
+                    }
+
+                    // Always show last page if different from first
+                    if (totalPages > 1) {
+                      pages.push(
+                        <button
+                          key={totalPages}
+                          onClick={() => paginate(totalPages)}
+                          className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
+                            currentPage === totalPages
+                              ? 'bg-blue-500 text-white shadow-md'
+                              : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {totalPages}
+                        </button>
+                      );
+                    }
+
+                    return pages;
+                  })()}
+                </div>
+                
+                <button
+                  onClick={() => paginate(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+        
 
           {filteredCustomers.length === 0 && (
             <div className="text-center py-16 bg-white rounded-2xl shadow-sm border border-gray-200">

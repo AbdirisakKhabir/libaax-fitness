@@ -67,22 +67,23 @@ export default function CustomerCard({ customer, isSelected, onSelect, onClick }
     if (daysUntilExpiry && daysUntilExpiry <= 7) return '🟡';
     return '🟢';
   };
-
   const formatDate = (date: Date | string) => {
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    const d = new Date(date);
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const year = d.getFullYear();
+    
+    return `${day}_${month}_${year}`;
   };
 
   const formatExpireDate = (date: Date | string | null) => {
-    if (!date) return 'No expiry date';
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    if (!date) return 'No expiry date set';
+    const d = new Date(date);
+    const day = d.getDate().toString().padStart(2, '0');
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const year = d.getFullYear();
+    
+    return `${day}_${month}_${year}`;
   };
 
   const getMembershipDuration = () => {
