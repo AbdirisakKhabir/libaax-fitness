@@ -1109,7 +1109,7 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
             onEdit={handleEditCustomer}
           />
 
-          // Replace the AddCustomerModal with the unified CustomerModal:
+        
           <CustomerModal
             isOpen={isCustomerModalOpen}
             onClose={() => {
