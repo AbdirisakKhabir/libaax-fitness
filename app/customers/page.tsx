@@ -201,39 +201,45 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
 
 
   // Fetch real customers from API
-// Update your fetchCustomers function in the component
-const fetchCustomers = async (page = 1) => {
-  try {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: customersPerPage.toString(),
-    });
+  const fetchCustomers = async (page = 1) => {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: customersPerPage.toString(),
+      });
 
-    if (searchTerm) params.set('search', searchTerm);
-    if (selectedFilter !== 'all') params.set('status', selectedFilter);
-    // Note: Add gender filter if needed in API
+      if (searchTerm) params.set('search', searchTerm);
+      if (selectedFilter !== 'all') params.set('status', selectedFilter);
 
-    const response = await fetch(`/api/customers?${params}`);
-    if (response.ok) {
-      const data = await response.json();
-      setCustomers(data.customers);
-      setFilteredCustomers(data.customers);
-      // You can also store pagination info if needed
-      // setPagination(data.pagination);
-    } else {
-      throw new Error('Failed to fetch customers');
+      const response = await fetch(`/api/customers?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        
+        // ✅ FIX: Handle the new response format
+        const customersArray = data.customers || data;
+        
+        setCustomers(customersArray);
+        setFilteredCustomers(customersArray);
+        
+        // If you want to use pagination info later
+        if (data.pagination) {
+          // You can store pagination info if needed
+          console.log('Pagination:', data.pagination);
+        }
+      } else {
+        throw new Error('Failed to fetch customers');
+      }
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Failed to load customers. Please refresh the page.',
+        timer: 3000,
+        showConfirmButton: false,
+      });
     }
-  } catch (error) {
-    console.error('Error fetching customers:', error);
-    Swal.fire({
-      icon: 'error',
-      title: 'Error',
-      text: 'Failed to load customers. Please refresh the page.',
-      timer: 3000,
-      showConfirmButton: false,
-    });
-  }
-};
+  };
 
   useEffect(() => {
     setIsClient(true);
@@ -325,7 +331,8 @@ const fetchCustomers = async (page = 1) => {
   };
 
   const applyFilters = (filter: string, search: string, gender: string) => {
-    let filtered = customers;
+    // ✅ FIX: Make sure we're working with an array
+    let filtered = Array.isArray(customers) ? customers : [];
   
     // Date filter
     if (filter !== 'all') {
@@ -342,7 +349,7 @@ const fetchCustomers = async (page = 1) => {
           break;
         case 'expired':
           filtered = filtered.filter(customer => {
-            if (!customer.expireDate) return true; // No expire date = expired
+            if (!customer.expireDate) return true;
             return !customer.isActive || new Date(customer.expireDate) < new Date();
           });
           break;
@@ -352,7 +359,7 @@ const fetchCustomers = async (page = 1) => {
   
       if (filter !== 'expired') {
         filtered = filtered.filter(customer => {
-          if (!customer.expireDate) return false; // No expire date = skip
+          if (!customer.expireDate) return false;
           const customerDate = new Date(customer.expireDate).toISOString().split('T')[0];
           return customerDate === targetDate;
         });
@@ -362,7 +369,7 @@ const fetchCustomers = async (page = 1) => {
     // Search filter
     if (search) {
       filtered = filtered.filter(customer =>
-        customer.name.toLowerCase().includes(search.toLowerCase()) ||
+        customer.name?.toLowerCase().includes(search.toLowerCase()) ||
         (customer.phone && customer.phone.toLowerCase().includes(search.toLowerCase()))
       );
     }
