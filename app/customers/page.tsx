@@ -166,7 +166,7 @@ export default function CustomersPage() {
       Swal.fire({
         icon: 'error',
         title: 'Error Loading Customers',
-        text: error.message || 'Failed to load customers. Please refresh the page.',
+        text: error instanceof Error ? error.message : 'An unexpected error occurred while fetching customers.',
         timer: 4000,
         showConfirmButton: true,
       });
