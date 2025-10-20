@@ -1,10 +1,9 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Customer } from '@/types/customer';
 import CustomerCard from '@/components/CustomerCard';
 import CustomerDetailModal from '@/components/CustomerDetailModal';
 import Swal from 'sweetalert2';
-import AddCustomerModal from '@/components/AddCustomerModal';
 import AddUserModal from '@/components/AddUserModal';
 import UsersListModal from '@/components/UsersListModal';
 import { Users, CheckCircle, Clock, AlertTriangle } from "lucide-react";
@@ -16,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { CreditCard, BarChart3, LogOut, UserPlus, ChevronRight, ChevronLeft } from 'lucide-react';
 import CustomerModal from '@/components/AddCustomerModal';
+
 // Payment types
 interface Payment {
   id: string;
@@ -64,20 +64,17 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
 }
 
 export default function CustomersPage() {
+  // State Management
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [isUsersListModalOpen, setIsUsersListModalOpen] = useState(false);
-  // New state for dropdowns and modals
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [isPaymentsListModalOpen, setIsPaymentsListModalOpen] = useState(false);
   const [isAddPaymentModalOpen, setIsAddPaymentModalOpen] = useState(false);
@@ -86,7 +83,8 @@ export default function CustomersPage() {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [customersPerPage] = useState(12);
+  const [customersPerPage] = useState(50);
+  const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -94,20 +92,436 @@ export default function CustomersPage() {
     hasNext: false,
     hasPrev: false
   });
-
-
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [reportFilters, setReportFilters] = useState<ReportFilters>({
-    startDate: '',
-    endDate: '',
-    phone: '',
-    name: ''
-  });
+  const [loading, setLoading] = useState(false);
   const [genderFilter, setGenderFilter] = useState<string>('all');
 
   const router = useRouter();
   const { data: session } = useSession();
 
+  // Helper functions for button classes
+  const getActiveButtonClasses = (color: string) => {
+    const colorClasses = {
+      blue: 'bg-blue-500 text-white shadow-lg shadow-blue-500/25',
+      red: 'bg-red-500 text-white shadow-lg shadow-red-500/25',
+      orange: 'bg-orange-500 text-white shadow-lg shadow-orange-500/25',
+      indigo: 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25',
+      pink: 'bg-pink-500 text-white shadow-lg shadow-pink-500/25',
+      gray: 'bg-gray-500 text-white shadow-lg shadow-gray-500/25',
+    };
+    return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
+  };
+
+  const getInactiveButtonClasses = (color: string) => {
+    const colorClasses = {
+      blue: 'bg-white text-gray-700 border border-gray-300 hover:border-blue-300 hover:bg-blue-50 shadow-sm',
+      red: 'bg-white text-gray-700 border border-gray-300 hover:border-red-300 hover:bg-red-50 shadow-sm',
+      orange: 'bg-white text-gray-700 border border-gray-300 hover:border-orange-300 hover:bg-orange-50 shadow-sm',
+      indigo: 'bg-white text-gray-700 border border-gray-300 hover:border-indigo-300 hover:bg-indigo-50 shadow-sm',
+      pink: 'bg-white text-gray-700 border border-gray-300 hover:border-pink-300 hover:bg-pink-50 shadow-sm',
+      gray: 'bg-white text-gray-700 border border-gray-300 hover:border-gray-300 hover:bg-gray-50 shadow-sm',
+    };
+    return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
+  };
+
+  // Fetch customers from API
+  const fetchCustomers = useCallback(async (page = 1) => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: customersPerPage.toString(),
+      });
+  
+      // Add all filters to API call
+      if (searchTerm) params.set('search', searchTerm);
+      if (selectedFilter !== 'all') params.set('status', selectedFilter);
+      if (genderFilter !== 'all') params.set('gender', genderFilter);
+  
+      console.log('🔍 Fetching customers with URL:', `/api/customers?${params}`);
+  
+      const response = await fetch(`/api/customers?${params}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ API Response:', data);
+        
+        setCustomers(data.customers || []);
+        
+        if (data.pagination) {
+          setPagination(data.pagination);
+        }
+      } else {
+        // Get the actual error message from the API
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ API Error Response:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData
+        });
+        
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('🚨 Error fetching customers:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error Loading Customers',
+        text: error.message || 'Failed to load customers. Please refresh the page.',
+        timer: 4000,
+        showConfirmButton: true,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [searchTerm, selectedFilter, genderFilter, customersPerPage]);
+
+  // Effects
+  useEffect(() => {
+    setIsClient(true);
+    fetchCustomers(currentPage);
+  }, [fetchCustomers, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedFilter, genderFilter]);
+
+  // Filter functions
+  const filterCustomers = useCallback((filter: string) => {
+    setSelectedFilter(filter);
+  }, []);
+
+  const handleGenderFilter = useCallback((gender: string) => {
+    setGenderFilter(gender);
+  }, []);
+
+  const handleSearch = useCallback((term: string) => {
+    setSearchTerm(term);
+  }, []);
+
+  // Customer management functions
+  const handleEditCustomer = (customer: Customer) => {
+    setEditingCustomer(customer);
+    setIsCustomerModalOpen(true);
+  };
+
+  const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Customer>) => {
+    try {
+      // Refresh data to get updated customer from server
+      fetchCustomers(currentPage);
+      
+      // If the edited customer is currently selected in detail modal, update it
+      if (selectedCustomer?.id === customerId) {
+        setSelectedCustomer(prev => prev ? { ...prev, ...updatedData } : null);
+      }
+    } catch (error) {
+      console.error('Error updating customer:', error);
+    }
+  };
+
+  const handleAddCustomer = (newCustomer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const customer: Customer = {
+      ...newCustomer,
+      id: Date.now().toString(),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    setCustomers(prev => [...prev, customer]);
+    // Refresh data to include the new customer
+    fetchCustomers(currentPage);
+    
+    Swal.fire({
+      icon: 'success',
+      title: 'Customer Added!',
+      text: `${newCustomer.name} has been successfully added.`,
+      timer: 2000,
+      showConfirmButton: false,
+    });
+  };
+
+  // Selection functions
+  const toggleCustomerSelection = (customerId: string) => {
+    setSelectedCustomers(prev =>
+      prev.includes(customerId)
+        ? prev.filter(id => id !== customerId)
+        : [...prev, customerId]
+    );
+  };
+
+  const selectAllCustomers = () => {
+    if (selectedCustomers.length === customers.length) {
+      setSelectedCustomers([]);
+    } else {
+      setSelectedCustomers(customers.map(c => c.id));
+    }
+  };
+
+  const handleCustomerClick = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setIsDetailModalOpen(true);
+  };
+
+  // Pagination
+  const paginate = useCallback((pageNumber: number) => {
+    setCurrentPage(pageNumber);
+  }, []);
+
+  // Renewal function
+  const handleRenewal = async (renewalData: {
+    customerIds: string[];
+    paidAmounts: { [key: string]: number };
+    expireDates: { [key: string]: string };
+  }) => {
+    try {
+      const renewalPromises = renewalData.customerIds.map(async (customerId) => {
+        const customer = customers.find(c => c.id === customerId);
+        if (!customer) return null;
+
+        try {
+          const renewResponse = await fetch(`/api/customer/${customerId}/renew`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              expireDate: renewalData.expireDates[customerId],
+              paidAmount: renewalData.paidAmounts[customerId],
+              userId: session?.user?.id || 1,
+            }),
+          });
+
+          if (!renewResponse.ok) {
+            const errorData = await renewResponse.json();
+            throw new Error(errorData.error || 'Failed to renew customer');
+          }
+
+          const result = await renewResponse.json();
+
+          // Send renewal WhatsApp message if phone exists
+          if (customer.phone) {
+            try {
+              await fetch('/api/whatsapp/send', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  phone: customer.phone,
+                  name: customer.name,
+                  gender: customer.gender,
+                  fee: renewalData.paidAmounts[customerId],
+                  registerDate: new Date().toISOString().split('T')[0],
+                  expireDate: renewalData.expireDates[customerId],
+                  messageType: 'renewal'
+                }),
+              });
+            } catch (whatsappError) {
+              console.error(`Failed to send renewal message to ${customer.name}:`, whatsappError);
+            }
+          }
+
+          return result.customer;
+        } catch (error) {
+          console.error(`Error renewing customer ${customer.name}:`, error);
+          throw error;
+        }
+      });
+
+      const renewalResults = await Promise.allSettled(renewalPromises);
+      
+      const failedRenewals = renewalResults.filter(result => result.status === 'rejected');
+      
+      if (failedRenewals.length > 0) {
+        throw new Error(`${failedRenewals.length} customer(s) failed to renew`);
+      }
+
+      // Refresh data after renewal
+      fetchCustomers(currentPage);
+      setSelectedCustomers([]);
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Renewal Successful!',
+        html: `
+          <div class="text-center">
+            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+            </div>
+            <p class="text-lg font-semibold text-gray-800">${renewalData.customerIds.length} customer(s) renewed!</p>
+            <p class="text-gray-600 mt-2">Memberships have been extended successfully.</p>
+          </div>
+        `,
+        confirmButtonText: 'Great!',
+        confirmButtonColor: '#10b981',
+        timer: 5000,
+        timerProgressBar: true,
+      });
+    } catch (error) {
+      console.error('Error during renewal:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Renewal Failed',
+        text: error instanceof Error ? error.message : 'Failed to process renewal. Please try again.',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#ef4444',
+      });
+    }
+  };
+
+  // WhatsApp messaging
+  const handleWhatsAppMessage = async () => {
+    if (selectedCustomers.length === 0) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'No Customers Selected',
+        text: 'Please select at least one customer to send WhatsApp message.',
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: 'Send Payment Reminders?',
+      html: `
+        <div class="text-left">
+          <p>You are about to send payment reminder messages to <strong>${selectedCustomers.length}</strong> customer(s).</p>
+          <div class="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+            <p class="text-sm text-yellow-800 font-semibold">Selected Customers:</p>
+            <ul class="text-sm text-yellow-700 mt-2 max-h-32 overflow-y-auto">
+              ${customers
+                .filter(c => selectedCustomers.includes(c.id))
+                .map(customer => `<li>• ${customer.name} (${customer.phone || 'No phone'})</li>`)
+                .join('')}
+            </ul>
+          </div>
+          <p class="mt-3 text-sm text-gray-600">Do you want to proceed?</p>
+        </div>
+      `,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, Send Messages',
+      cancelButtonText: 'No, Cancel',
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      reverseButtons: true,
+    });
+
+    if (result.isConfirmed) {
+      try {
+        const selectedCustomersData = customers.filter(c => selectedCustomers.includes(c.id));
+        let successCount = 0;
+        let failCount = 0;
+
+        Swal.fire({
+          title: 'Sending Messages...',
+          html: `
+            <div class="text-center">
+              <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p>Sending payment reminders to ${selectedCustomers.length} customer(s)...</p>
+              <p class="text-sm text-gray-500 mt-2">Please wait</p>
+            </div>
+          `,
+          showConfirmButton: false,
+          allowOutsideClick: false
+        });
+
+        const messagePromises = selectedCustomersData.map(async (customer) => {
+          try {
+            const response = await fetch('/api/whatsapp/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                phone: customer.phone,
+                name: customer.name,
+                gender: customer.gender,
+                fee: customer.fee,
+                registerDate: new Date().toISOString().split('T')[0],
+                messageType: 'payment'
+              }),
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+              successCount++;
+              return { success: true, customer: customer.name };
+            } else {
+              failCount++;
+              return { success: false, customer: customer.name, error: result.error };
+            }
+          } catch (whatsappError) {
+            failCount++;
+            return { success: false, customer: customer.name, error: whatsappError };
+          }
+        });
+
+        await Promise.allSettled(messagePromises);
+        Swal.close();
+
+        if (failCount === 0) {
+          Swal.fire({
+            icon: 'success',
+            title: 'Messages Sent Successfully!',
+            html: `
+              <div class="text-center">
+                <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                </div>
+                <p class="text-lg font-semibold text-gray-800">All messages sent successfully!</p>
+                <p class="text-gray-600 mt-2">Payment reminders sent to <strong>${successCount}</strong> customer(s).</p>
+              </div>
+            `,
+            confirmButtonText: 'Great!',
+            confirmButtonColor: '#10b981',
+            timer: 5000,
+            timerProgressBar: true,
+          });
+        } else if (successCount > 0) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Partial Success',
+            html: `
+              <div class="text-left">
+                <p><strong>${successCount}</strong> message(s) sent successfully</p>
+                <p><strong>${failCount}</strong> message(s) failed to send</p>
+                <div class="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <p class="text-sm text-yellow-800">Some customers may not have received the payment reminder.</p>
+                </div>
+              </div>
+            `,
+            confirmButtonText: 'Understand',
+            confirmButtonColor: '#f59e0b',
+          });
+        } else {
+          Swal.fire({
+            icon: 'error',
+            title: 'Failed to Send Messages',
+            text: 'All payment reminder messages failed to send. Please try again later.',
+            confirmButtonText: 'Try Again',
+            confirmButtonColor: '#ef4444',
+          });
+        }
+      } catch (error) {
+        console.error('Error sending WhatsApp messages:', error);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'An unexpected error occurred while sending messages.',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#ef4444',
+        });
+      }
+    }
+  };
+
+  // Logout function
   const handleLogout = async () => {
     const result = await Swal.fire({
       title: 'Logout Confirmation',
@@ -120,10 +534,9 @@ export default function CustomersPage() {
       cancelButtonColor: '#6b7280',
       reverseButtons: true,
     });
-  
+
     if (result.isConfirmed) {
       try {
-        // Show loading
         Swal.fire({
           title: 'Logging out...',
           allowOutsideClick: false,
@@ -131,14 +544,13 @@ export default function CustomersPage() {
             Swal.showLoading();
           }
         });
-  
+
         await signOut({ redirect: false });
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         
         Swal.close();
         router.push('/login');
-        
       } catch (error) {
         console.error('Logout error:', error);
         Swal.fire({
@@ -151,122 +563,20 @@ export default function CustomersPage() {
     }
   };
 
-
-  // Helper functions for button classes
-const getActiveButtonClasses = (color: string) => {
-  const colorClasses = {
-    blue: 'bg-blue-500 text-white shadow-lg shadow-blue-500/25',
-    red: 'bg-red-500 text-white shadow-lg shadow-red-500/25',
-    orange: 'bg-orange-500 text-white shadow-lg shadow-orange-500/25',
-    indigo: 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25',
-    pink: 'bg-pink-500 text-white shadow-lg shadow-pink-500/25',
-    gray: 'bg-gray-500 text-white shadow-lg shadow-gray-500/25',
-  };
-  return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
-};
-
-const getInactiveButtonClasses = (color: string) => {
-  const colorClasses = {
-    blue: 'bg-white text-gray-700 border border-gray-300 hover:border-blue-300 hover:bg-blue-50 shadow-sm',
-    red: 'bg-white text-gray-700 border border-gray-300 hover:border-red-300 hover:bg-red-50 shadow-sm',
-    orange: 'bg-white text-gray-700 border border-gray-300 hover:border-orange-300 hover:bg-orange-50 shadow-sm',
-    indigo: 'bg-white text-gray-700 border border-gray-300 hover:border-indigo-300 hover:bg-indigo-50 shadow-sm',
-    pink: 'bg-white text-gray-700 border border-gray-300 hover:border-pink-300 hover:bg-pink-50 shadow-sm',
-    gray: 'bg-white text-gray-700 border border-gray-300 hover:border-gray-300 hover:bg-gray-50 shadow-sm',
-  };
-  return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
-};
-
-
-  const handleEditCustomer = (customer: Customer) => {
-    setEditingCustomer(customer);
-    setIsCustomerModalOpen(true);
-  };
-
-  // Function to handle updating a customer
-const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Customer>) => {
-  try {
-    // Update local state
-    setCustomers(prev => prev.map(c => 
-      c.id === customerId ? { ...c, ...updatedData } : c
-    ));
-    setFilteredCustomers(prev => prev.map(c => 
-      c.id === customerId ? { ...c, ...updatedData } : c
-    ));
-    
-    // If the edited customer is currently selected in detail modal, update it
-    if (selectedCustomer?.id === customerId) {
-      setSelectedCustomer(prev => prev ? { ...prev, ...updatedData } : null);
-    }
-  } catch (error) {
-    console.error('Error updating customer:', error);
-  }
-};
-
-// Update your CustomerDetailModal to include edit functionality
-// In your CustomerDetailModal component, add an edit button:
-
-
-
-  // Fetch real customers from API
-  const fetchCustomers = async (page = 1) => {
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: customersPerPage.toString(),
-      });
-
-      if (searchTerm) params.set('search', searchTerm);
-      if (selectedFilter !== 'all') params.set('status', selectedFilter);
-
-      const response = await fetch(`/api/customers?${params}`);
-      if (response.ok) {
-        const data = await response.json();
-        
-        // ✅ Handle the paginated response correctly
-        setCustomers(data.customers || []);
-        setFilteredCustomers(data.customers || []);
-        
-        // ✅ Store pagination info
-        if (data.pagination) {
-          setPagination(data.pagination);
-        }
-      } else {
-        throw new Error('Failed to fetch customers');
-      }
-    } catch (error) {
-      console.error('Error fetching customers:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to load customers. Please refresh the page.',
-        timer: 3000,
-        showConfirmButton: false,
-      });
-    }
-  };
-
-  useEffect(() => {
-    setIsClient(true);
-    fetchCustomers();
-  }, []);
-
-  useEffect(() => {
-    setIsClient(true);
-    fetchCustomers(currentPage);
-  }, [currentPage]);
-
-  const filterCustomers = (filter: string) => {
-    setSelectedFilter(filter);
-    setCurrentPage(1); // Reset to first page
-    // Remove the applyFilters call - we'll use useEffect
-  };
+  // User management
   const handleAddUser = (userData: any) => {
     setUsers(prev => [...prev, userData]);
     setIsAddUserModalOpen(false);
   };
 
-  // Add missing function definitions
+  // Report functions
+  const [reportFilters, setReportFilters] = useState<ReportFilters>({
+    startDate: '',
+    endDate: '',
+    phone: '',
+    name: ''
+  });
+
   const handleReportFilterChange = (key: keyof ReportFilters, value: string) => {
     setReportFilters(prev => ({
       ...prev,
@@ -290,14 +600,25 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
     setIsAddPaymentModalOpen(false);
   };
 
+  // Helper functions
+  const getDayName = (daysFromToday: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + daysFromToday);
+    return date.toLocaleDateString('en-US', { weekday: 'long' });
+  };
+
+  const getDateString = (daysFromToday: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + daysFromToday);
+    return date.toISOString().split('T')[0];
+  };
+
+  // Stats calculation
   const stats = useMemo(() => {
     if (!isClient) return { total: 0, active: 0, expired: 0, expiringThisWeek: 0, male: 0, female: 0 };
     
-    // Use the total count from pagination for total
     const total = pagination.totalCount;
     
-    // For other stats, you might want to create a separate stats API
-    // For now, we'll calculate from the current page (less accurate)
     const active = customers.filter(c => {
       if (!c.expireDate) return false;
       return c.isActive && new Date(c.expireDate) >= new Date();
@@ -319,450 +640,11 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
     
     const male = customers.filter(c => c.gender === 'male').length;
     const female = customers.filter(c => c.gender === 'female').length;
-  
+
     return { total, active, expired, expiringThisWeek, male, female };
   }, [customers, isClient, pagination.totalCount]);
-  const getDayName = (daysFromToday: number) => {
-    const date = new Date();
-    date.setDate(date.getDate() + daysFromToday);
-    return date.toLocaleDateString('en-US', { weekday: 'long' });
-  };
 
-  const getDateString = (daysFromToday: number) => {
-    const date = new Date();
-    date.setDate(date.getDate() + daysFromToday);
-    return date.toISOString().split('T')[0];
-  };
-
-  
-
-  const handleGenderFilter = (gender: string) => {
-    setGenderFilter(gender);
-    setCurrentPage(1); // Reset to first page
-  };
-
-  const handleSearch = (term: string) => {
-    setSearchTerm(term);
-    setCurrentPage(1); // Reset to first page
-  };
-
-    // Add useEffect to refetch when filters change
-    useEffect(() => {
-      fetchCustomers(1); // Always start from page 1 when filters change
-    }, [searchTerm, selectedFilter]); 
-
-
-  const applyFilters = (filter: string, search: string, gender: string) => {
-    // ✅ FIX: Make sure we're working with an array
-    let filtered = Array.isArray(customers) ? customers : [];
-  
-    // Date filter
-    if (filter !== 'all') {
-      let targetDate: string;
-      switch (filter) {
-        case 'today':
-          targetDate = getDateString(0);
-          break;
-        case 'tomorrow':
-          targetDate = getDateString(1);
-          break;
-        case 'dayAfterTomorrow':
-          targetDate = getDateString(2);
-          break;
-        case 'expired':
-          filtered = filtered.filter(customer => {
-            if (!customer.expireDate) return true;
-            return !customer.isActive || new Date(customer.expireDate) < new Date();
-          });
-          break;
-        default:
-          targetDate = filter;
-      }
-  
-      if (filter !== 'expired') {
-        filtered = filtered.filter(customer => {
-          if (!customer.expireDate) return false;
-          const customerDate = new Date(customer.expireDate).toISOString().split('T')[0];
-          return customerDate === targetDate;
-        });
-      }
-    }
-  
-    // Search filter
-    if (search) {
-      filtered = filtered.filter(customer =>
-        customer.name?.toLowerCase().includes(search.toLowerCase()) ||
-        (customer.phone && customer.phone.toLowerCase().includes(search.toLowerCase()))
-      );
-    }
-  
-    // Gender filter
-    if (gender !== 'all') {
-      filtered = filtered.filter(customer => customer.gender === gender);
-    }
-  
-    setFilteredCustomers(filtered);
-  };
-
-
-
-  const handleAddCustomer = (newCustomer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const customer: Customer = {
-      ...newCustomer,
-      id: Date.now().toString(),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    setCustomers(prev => [...prev, customer]);
-    setFilteredCustomers(prev => [...prev, customer]);
-    
-    Swal.fire({
-      icon: 'success',
-      title: 'Customer Added!',
-      text: `${newCustomer.name} has been successfully added.`,
-      timer: 2000,
-      showConfirmButton: false,
-    });
-  };
-
-  const handleRenewal = async (renewalData: {
-    customerIds: string[];
-    paidAmounts: { [key: string]: number };
-    expireDates: { [key: string]: string };
-  }) => {
-    try {
-      const renewalPromises = renewalData.customerIds.map(async (customerId) => {
-        const customer = customers.find(c => c.id === customerId);
-        if (!customer) return null;
-  
-        try {
-          // Call the renew API endpoint
-          const renewResponse = await fetch(`/api/customer/${customerId}/renew`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              expireDate: renewalData.expireDates[customerId],
-              paidAmount: renewalData.paidAmounts[customerId],
-              userId: 1, // Replace with actual user ID from your auth system
-            }),
-          });
-  
-          if (!renewResponse.ok) {
-            const errorData = await renewResponse.json();
-            throw new Error(errorData.error || 'Failed to renew customer');
-          }
-  
-          const result = await renewResponse.json();
-  
-          // Send renewal WhatsApp message if phone exists
-          if (customer.phone) {
-            try {
-              await fetch('/api/whatsapp/send', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  phone: customer.phone,
-                  name: customer.name,
-                  gender: customer.gender,
-                  fee: renewalData.paidAmounts[customerId],
-                  registerDate: new Date().toISOString().split('T')[0],
-                  expireDate: renewalData.expireDates[customerId],
-                  messageType: 'renewal'
-                }),
-              });
-              console.log(`Renewal message sent to ${customer.name}`);
-            } catch (whatsappError) {
-              console.error(`Failed to send renewal message to ${customer.name}:`, whatsappError);
-            }
-          }
-  
-          return result.customer;
-  
-        } catch (error) {
-          console.error(`Error renewing customer ${customer.name}:`, error);
-          throw error;
-        }
-      });
-  
-      const renewalResults = await Promise.allSettled(renewalPromises);
-      
-      // Check for any failures
-      const failedRenewals = renewalResults.filter(result => result.status === 'rejected');
-      
-      if (failedRenewals.length > 0) {
-        throw new Error(`${failedRenewals.length} customer(s) failed to renew`);
-      }
-  
-      // Update local state with successful renewals
-      const updatedCustomers = renewalResults
-        .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled' && result.value)
-        .map(result => result.value);
-  
-      const newCustomers = customers.map(customer => {
-        const updatedCustomer = updatedCustomers.find(uc => uc?.id === customer.id);
-        return updatedCustomer || customer;
-      });
-  
-      setCustomers(newCustomers);
-      setFilteredCustomers(newCustomers);
-      setSelectedCustomers([]);
-      setIsRenewalModalOpen(false);
-  
-      // Show success message
-      Swal.fire({
-        icon: 'success',
-        title: 'Renewal Successful!',
-        html: `
-          <div class="text-center">
-            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-              </svg>
-            </div>
-            <p class="text-lg font-semibold text-gray-800">${renewalData.customerIds.length} customer(s) renewed!</p>
-            <p class="text-gray-600 mt-2">Memberships have been extended successfully.</p>
-          </div>
-        `,
-        confirmButtonText: 'Great!',
-        confirmButtonColor: '#10b981',
-        timer: 5000,
-        timerProgressBar: true,
-      });
-  
-    } catch (error) {
-      console.error('Error during renewal:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Renewal Failed',
-        text: error instanceof Error ? error.message : 'Failed to process renewal. Please try again.',
-        confirmButtonText: 'OK',
-        confirmButtonColor: '#ef4444',
-      });
-    }
-  };
-
-  const toggleCustomerSelection = (customerId: string) => {
-    setSelectedCustomers(prev =>
-      prev.includes(customerId)
-        ? prev.filter(id => id !== customerId)
-        : [...prev, customerId]
-    );
-  };
-
-  const selectAllCustomers = () => {
-    if (selectedCustomers.length === filteredCustomers.length) {
-      setSelectedCustomers([]);
-    } else {
-      setSelectedCustomers(filteredCustomers.map(c => c.id));
-    }
-  };
-
-  const handleCustomerClick = (customer: Customer) => {
-    setSelectedCustomer(customer);
-    setIsDetailModalOpen(true);
-  };
-
-
-  const handleWhatsAppMessage = async () => {
-    if (selectedCustomers.length === 0) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'No Customers Selected',
-        text: 'Please select at least one customer to send WhatsApp message.',
-        timer: 2000,
-        showConfirmButton: false,
-      });
-      return;
-    }
-  
-    // Show confirmation dialog
-    const result = await Swal.fire({
-      title: 'Send Payment Reminders?',
-      html: `
-        <div class="text-left">
-          <p>You are about to send payment reminder messages to <strong>${selectedCustomers.length}</strong> customer(s).</p>
-          <div class="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-            <p class="text-sm text-yellow-800 font-semibold">Selected Customers:</p>
-            <ul class="text-sm text-yellow-700 mt-2 max-h-32 overflow-y-auto">
-              ${customers
-                .filter(c => selectedCustomers.includes(c.id))
-                .map(customer => `<li>• ${customer.name} (${customer.phone})</li>`)
-                .join('')}
-            </ul>
-          </div>
-          <p class="mt-3 text-sm text-gray-600">Do you want to proceed?</p>
-        </div>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: 'Yes, Send Messages',
-      cancelButtonText: 'No, Cancel',
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      reverseButtons: true,
-      customClass: {
-        popup: 'rounded-2xl',
-        confirmButton: 'px-6 py-3 rounded-xl font-semibold',
-        cancelButton: 'px-6 py-3 rounded-xl font-semibold'
-      }
-    });
-  
-    // If user confirms, send messages
-    if (result.isConfirmed) {
-      try {
-        const selectedCustomersData = customers.filter(c => selectedCustomers.includes(c.id));
-        let successCount = 0;
-        let failCount = 0;
-  
-        // Show loading state
-        Swal.fire({
-          title: 'Sending Messages...',
-          html: `
-            <div class="text-center">
-              <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p>Sending payment reminders to ${selectedCustomers.length} customer(s)...</p>
-              <p class="text-sm text-gray-500 mt-2">Please wait</p>
-            </div>
-          `,
-          showConfirmButton: false,
-          allowOutsideClick: false
-        });
-  
-        // Send payment reminder to each selected customer
-        const messagePromises = selectedCustomersData.map(async (customer) => {
-          try {
-            const response = await fetch('/api/whatsapp/send', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                phone: customer.phone,
-                name: customer.name,
-                gender: customer.gender,
-                fee: customer.fee,
-                registerDate: new Date().toISOString().split('T')[0],
-                messageType: 'payment'
-              }),
-            });
-  
-            const result = await response.json();
-            
-            if (result.success) {
-              successCount++;
-              console.log(`✅ Payment reminder sent to ${customer.name}`);
-              return { success: true, customer: customer.name };
-            } else {
-              failCount++;
-              console.error(`❌ Failed to send to ${customer.name}:`, result.error);
-              return { success: false, customer: customer.name, error: result.error };
-            }
-          } catch (whatsappError) {
-            failCount++;
-            console.error(`❌ Failed to send payment reminder to ${customer.name}:`, whatsappError);
-            return { success: false, customer: customer.name, error: whatsappError };
-          }
-        });
-  
-        // Wait for all messages to complete
-        const results = await Promise.allSettled(messagePromises);
-  
-        // Close loading dialog
-        Swal.close();
-  
-        // Show results summary
-        if (failCount === 0) {
-          // All messages sent successfully
-          Swal.fire({
-            icon: 'success',
-            title: 'Messages Sent Successfully!',
-            html: `
-              <div class="text-center">
-                <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                </div>
-                <p class="text-lg font-semibold text-gray-800">All messages sent successfully!</p>
-                <p class="text-gray-600 mt-2">Payment reminders sent to <strong>${successCount}</strong> customer(s).</p>
-              </div>
-            `,
-            confirmButtonText: 'Great!',
-            confirmButtonColor: '#10b981',
-            timer: 5000,
-            timerProgressBar: true,
-          });
-        } else if (successCount > 0) {
-          // Some messages failed
-          Swal.fire({
-            icon: 'warning',
-            title: 'Partial Success',
-            html: `
-              <div class="text-left">
-                <p><strong>${successCount}</strong> message(s) sent successfully</p>
-                <p><strong>${failCount}</strong> message(s) failed to send</p>
-                <div class="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                  <p class="text-sm text-yellow-800">Some customers may not have received the payment reminder.</p>
-                </div>
-              </div>
-            `,
-            confirmButtonText: 'Understand',
-            confirmButtonColor: '#f59e0b',
-          });
-        } else {
-          // All messages failed
-          Swal.fire({
-            icon: 'error',
-            title: 'Failed to Send Messages',
-            text: 'All payment reminder messages failed to send. Please try again later.',
-            confirmButtonText: 'Try Again',
-            confirmButtonColor: '#ef4444',
-          });
-        }
-  
-      } catch (error) {
-        console.error('Error sending WhatsApp messages:', error);
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: 'An unexpected error occurred while sending messages.',
-          confirmButtonText: 'OK',
-          confirmButtonColor: '#ef4444',
-        });
-      }
-    } else {
-      // User cancelled
-      Swal.fire({
-        icon: 'info',
-        title: 'Cancelled',
-        text: 'Message sending was cancelled.',
-        timer: 2000,
-        showConfirmButton: false,
-      });
-    }
-  };
-
-
-//   const indexOfLastCustomer = currentPage * customersPerPage;
-// const indexOfFirstCustomer = indexOfLastCustomer - customersPerPage;
-// const currentCustomers = filteredCustomers.slice(indexOfFirstCustomer, indexOfLastCustomer);
-// const totalPages = Math.ceil(filteredCustomers.length / customersPerPage);
-
-const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
-const currentCustomers = filteredCustomers;
-
-
-  // Reset to first page when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedFilter, searchTerm, genderFilter]);
-
-
+  // Loading state
   if (!isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
@@ -794,6 +676,16 @@ const currentCustomers = filteredCustomers;
     <AuthWrapper>
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
         <div className="max-w-7xl mx-auto">
+          {/* Loading Overlay */}
+          {loading && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+              <div className="bg-white rounded-2xl p-8 flex items-center space-x-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                <span className="text-gray-700 font-semibold">Loading customers...</span>
+              </div>
+            </div>
+          )}
+
           {/* Header with Navigation Dropdowns */}
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12">
             <div className="flex items-center mb-4 md:mb-0">
@@ -908,7 +800,6 @@ const currentCustomers = filteredCustomers;
                       <CreditCard className="w-4 h-4" />
                       <span>Payments Report</span>
                     </button>
-        
                   </div>
                 )}
               </div>
@@ -1013,44 +904,44 @@ const currentCustomers = filteredCustomers;
 
               {/* Filter Buttons */}
               <div className="flex flex-wrap gap-3 justify-start lg:justify-end">
-              {[
-                { label: "All Members", key: "all", color: "blue" as const },
-                { label: `Today (${getDayName(0)})`, key: "today", color: "red" as const },
-                { label: `Tomorrow (${getDayName(1)})`, key: "tomorrow", color: "orange" as const },
-                { label: "Expired", key: "expired", color: "red" as const },
-              ].map((btn) => (
-                <button
-                  key={btn.key}
-                  onClick={() => filterCustomers(btn.key)}
-                  className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
-                    selectedFilter === btn.key
-                      ? getActiveButtonClasses(btn.color)
-                      : getInactiveButtonClasses(btn.color)
-                  }`}
-                >
-                  {btn.label}
-                </button>
-              ))}
+                {[
+                  { label: "All Members", key: "all", color: "blue" as const },
+                  { label: `Today (${getDayName(0)})`, key: "today", color: "red" as const },
+                  { label: `Tomorrow (${getDayName(1)})`, key: "tomorrow", color: "orange" as const },
+                  { label: "Expired", key: "expired", color: "red" as const },
+                ].map((btn) => (
+                  <button
+                    key={btn.key}
+                    onClick={() => filterCustomers(btn.key)}
+                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                      selectedFilter === btn.key
+                        ? getActiveButtonClasses(btn.color)
+                        : getInactiveButtonClasses(btn.color)
+                    }`}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
 
-              {/* Gender Filters */}
-              {[
-                { label: "Male", key: "male", color: "indigo" as const },
-                { label: "Female", key: "female", color: "pink" as const },
-                { label: "All Genders", key: "all", color: "gray" as const },
-              ].map((btn) => (
-                <button
-                  key={btn.key}
-                  onClick={() => handleGenderFilter(btn.key)}
-                  className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
-                    genderFilter === btn.key
-                      ? getActiveButtonClasses(btn.color)
-                      : getInactiveButtonClasses(btn.color)
-                  }`}
-                >
-                  {btn.label}
-                </button>
-              ))}
-            </div>
+                {/* Gender Filters */}
+                {[
+                  { label: "Male", key: "male", color: "indigo" as const },
+                  { label: "Female", key: "female", color: "pink" as const },
+                  { label: "All Genders", key: "all", color: "gray" as const },
+                ].map((btn) => (
+                  <button
+                    key={btn.key}
+                    onClick={() => handleGenderFilter(btn.key)}
+                    className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                      genderFilter === btn.key
+                        ? getActiveButtonClasses(btn.color)
+                        : getInactiveButtonClasses(btn.color)
+                    }`}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Action Buttons */}
@@ -1088,144 +979,156 @@ const currentCustomers = filteredCustomers;
           </div>
 
           {/* Select All Checkbox */}
-          {filteredCustomers.length > 0 && (
+          {customers.length > 0 && (
             <div className="mb-6 flex items-center bg-white rounded-xl p-4 shadow-sm border border-gray-200">
               <input
                 type="checkbox"
-                checked={selectedCustomers.length === filteredCustomers.length && filteredCustomers.length > 0}
+                checked={selectedCustomers.length === customers.length && customers.length > 0}
                 onChange={selectAllCustomers}
                 className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
               />
               <label className="ml-3 text-gray-700 font-semibold">
-                Select All ({selectedCustomers.length} selected of {filteredCustomers.length})
+                Select All ({selectedCustomers.length} selected of {customers.length})
               </label>
             </div>
           )}
 
           {/* Customer Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {currentCustomers.map(customer => (
-              <CustomerCard
-                key={customer.id}
-                customer={customer}
-                isSelected={selectedCustomers.includes(customer.id)}
-                onSelect={() => toggleCustomerSelection(customer.id)}
-                onClick={handleCustomerClick}
-              />
-            ))}
-        </div>
-          
+            {loading ? (
+              // Loading skeletons
+              [...Array(8)].map((_, i) => (
+                <div key={i} className="bg-white rounded-2xl shadow-sm p-6 h-64 animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/2 mb-2"></div>
+                  <div className="h-3 bg-gray-200 rounded w-2/3 mb-4"></div>
+                  <div className="h-20 bg-gray-200 rounded mb-4"></div>
+                  <div className="h-8 bg-gray-200 rounded"></div>
+                </div>
+              ))
+            ) : (
+              customers.map(customer => (
+                <CustomerCard
+                  key={customer.id}
+                  customer={customer}
+                  isSelected={selectedCustomers.includes(customer.id)}
+                  onSelect={() => toggleCustomerSelection(customer.id)}
+                  onClick={handleCustomerClick}
+                />
+              ))
+            )}
+          </div>
+
           {/* Pagination Controls */}
-            {/* Smart Pagination */}
-          {/* Pagination Controls */}
-            {pagination.totalPages > 1 && (
-              <div className="flex justify-center items-center space-x-4 mt-8">
-                <button
-                  onClick={() => paginate(currentPage - 1)}
-                  disabled={!pagination.hasPrev}
-                  className="flex items-center space-x-2 px-4 py-2 border text-black border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  <span>Previous</span>
-                </button>
-                
-                <div className="flex space-x-1">
-                  {/* Generate smart page numbers */}
-                  {(() => {
-                    const pages = [];
-                    const showPages = 3;
-                    
-                    // Always show first page
+          {pagination.totalPages > 1 && (
+            <div className="flex justify-center items-center space-x-4 mt-8">
+              <button
+                onClick={() => paginate(pagination.currentPage - 1)}
+                disabled={!pagination.hasPrev || loading}
+                className="flex items-center space-x-2 px-4 py-2 border text-black border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Previous</span>
+              </button>
+              
+              <div className="flex space-x-1">
+                {(() => {
+                  const pages = [];
+                  const showPages = 3;
+                  
+                  // Always show first page
+                  pages.push(
+                    <button
+                      key={1}
+                      onClick={() => paginate(1)}
+                      disabled={loading}
+                      className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
+                        pagination.currentPage === 1
+                          ? 'bg-blue-500 text-white shadow-md'
+                          : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                      } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      1
+                    </button>
+                  );
+
+                  // Show ellipsis if there's a gap
+                  if (pagination.currentPage > showPages + 1) {
+                    pages.push(
+                      <span key="ellipsis1" className="w-10 h-10 flex items-center justify-center text-gray-500">
+                        ...
+                      </span>
+                    );
+                  }
+
+                  // Show pages around current page
+                  for (let i = Math.max(2, pagination.currentPage - 1); i <= Math.min(pagination.totalPages - 1, pagination.currentPage + 1); i++) {
+                    if (i === 1 || i === pagination.totalPages) continue;
                     pages.push(
                       <button
-                        key={1}
-                        onClick={() => paginate(1)}
+                        key={i}
+                        onClick={() => paginate(i)}
+                        disabled={loading}
                         className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
-                          pagination.currentPage === 1
+                          pagination.currentPage === i
                             ? 'bg-blue-500 text-white shadow-md'
                             : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                        }`}
+                        } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
-                        1
+                        {i}
                       </button>
                     );
+                  }
 
-                    // Show ellipsis if there's a gap
-                    if (pagination.currentPage > showPages + 1) {
-                      pages.push(
-                        <span key="ellipsis1" className="w-10 h-10 flex items-center justify-center text-gray-500">
-                          ...
-                        </span>
-                      );
-                    }
+                  // Show ellipsis if there's a gap at the end
+                  if (pagination.currentPage < pagination.totalPages - showPages) {
+                    pages.push(
+                      <span key="ellipsis2" className="w-10 h-10 flex items-center justify-center text-gray-500">
+                        ...
+                      </span>
+                    );
+                  }
 
-                    // Show pages around current page
-                    for (let i = Math.max(2, pagination.currentPage - 1); i <= Math.min(pagination.totalPages - 1, pagination.currentPage + 1); i++) {
-                      if (i === 1 || i === pagination.totalPages) continue;
-                      pages.push(
-                        <button
-                          key={i}
-                          onClick={() => paginate(i)}
-                          className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
-                            pagination.currentPage === i
-                              ? 'bg-blue-500 text-white shadow-md'
-                              : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          {i}
-                        </button>
-                      );
-                    }
+                  // Always show last page if different from first
+                  if (pagination.totalPages > 1) {
+                    pages.push(
+                      <button
+                        key={pagination.totalPages}
+                        onClick={() => paginate(pagination.totalPages)}
+                        disabled={loading}
+                        className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
+                          pagination.currentPage === pagination.totalPages
+                            ? 'bg-blue-500 text-white shadow-md'
+                            : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                        } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {pagination.totalPages}
+                      </button>
+                    );
+                  }
 
-                    // Show ellipsis if there's a gap at the end
-                    if (pagination.currentPage < pagination.totalPages - showPages) {
-                      pages.push(
-                        <span key="ellipsis2" className="w-10 h-10 flex items-center justify-center text-gray-500">
-                          ...
-                        </span>
-                      );
-                    }
-
-                    // Always show last page if different from first
-                    if (pagination.totalPages > 1) {
-                      pages.push(
-                        <button
-                          key={pagination.totalPages}
-                          onClick={() => paginate(pagination.totalPages)}
-                          className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
-                            pagination.currentPage === pagination.totalPages
-                              ? 'bg-blue-500 text-white shadow-md'
-                              : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          {pagination.totalPages}
-                        </button>
-                      );
-                    }
-
-                    return pages;
-                  })()}
-                </div>
-                
-                <button
-                  onClick={() => paginate(currentPage + 1)}
-                  disabled={!pagination.hasNext}
-                  className="flex items-center space-x-2 text-black px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
-                >
-                  <span>Next</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                  return pages;
+                })()}
               </div>
-            )}
+              
+              <button
+                onClick={() => paginate(pagination.currentPage + 1)}
+                disabled={!pagination.hasNext || loading}
+                className="flex items-center space-x-2 text-black px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
+              >
+                <span>Next</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
-        
-
-          {filteredCustomers.length === 0 && (
+          {/* No Results Message */}
+          {!loading && customers.length === 0 && (
             <div className="text-center py-16 bg-white rounded-2xl shadow-sm border border-gray-200">
               <div className="text-gray-400 text-8xl mb-6">💪</div>
               <h3 className="text-2xl font-bold text-gray-600 mb-2">No members found</h3>
               <p className="text-gray-500 max-w-md mx-auto">
-                {searchTerm || selectedFilter !== 'all' 
+                {searchTerm || selectedFilter !== 'all' || genderFilter !== 'all'
                   ? 'Try adjusting your search or filter criteria' 
                   : 'Get started by adding your first gym member'
                 }
@@ -1241,7 +1144,6 @@ const currentCustomers = filteredCustomers;
             onEdit={handleEditCustomer}
           />
 
-        
           <CustomerModal
             isOpen={isCustomerModalOpen}
             onClose={() => {
@@ -1253,21 +1155,13 @@ const currentCustomers = filteredCustomers;
             customer={editingCustomer}
           />
 
-
           <RenewalModal
             isOpen={isRenewalModalOpen}
             onClose={() => setIsRenewalModalOpen(false)}
             onRenew={handleRenewal}
             selectedCount={selectedCustomers.length}
             selectedCustomers={customers.filter(c => selectedCustomers.includes(c.id))}
-            currentUser={session?.user} // Pass current user info
-          />
-
-          <CustomerDetailModal
-            isOpen={isDetailModalOpen}
-            onClose={() => setIsDetailModalOpen(false)}
-            customer={selectedCustomer}
-            onEdit={handleEditCustomer}
+            currentUser={session?.user}
           />
 
           <PaymentsListModal
@@ -1275,20 +1169,17 @@ const currentCustomers = filteredCustomers;
             onClose={() => setIsPaymentsListModalOpen(false)}
           />
 
-          {/* Payments Report Modal */}
           <PaymentsReportModal
             isOpen={isPaymentsReportModalOpen}
             onClose={() => setIsPaymentsReportModalOpen(false)}
           />
 
-          {/* Add User Modal */}
           <AddUserModal
             isOpen={isAddUserModalOpen}
             onClose={() => setIsAddUserModalOpen(false)}
             onAdd={handleAddUser}
           />
 
-          {/* Users List Modal */}
           <UsersListModal
             isOpen={isUsersListModalOpen}
             onClose={() => setIsUsersListModalOpen(false)}

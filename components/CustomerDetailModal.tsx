@@ -163,7 +163,7 @@ export default function CustomerDetailModal({
             <img
               src={customer.image || '/api/placeholder/100/100'}
               alt={customer.name}
-              className="w-24 h-24 rounded-2xl object-cover border-4 border-gray-200 shadow-lg"
+              className="w-32 h-42 rounded-2xl object-cover border-4 border-gray-200 shadow-lg"
             />
             <div className="flex-1">
               <h3 className="text-2xl font-bold text-gray-900 mb-2">{customer.name}</h3>
@@ -192,7 +192,7 @@ export default function CustomerDetailModal({
             {getStatusText()}
           </div>
 
-          {/* Payment History Section */}
+          {/* Payment History Section
           <div className="mb-6">
             <h4 className="text-lg font-semibold text-gray-900 mb-4">Payment History</h4>
             {loadingPayments ? (
@@ -224,7 +224,7 @@ export default function CustomerDetailModal({
                 <p className="text-gray-500">No payment history available</p>
               </div>
             )}
-          </div>
+          </div> */}
 
           {/* Detailed Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">

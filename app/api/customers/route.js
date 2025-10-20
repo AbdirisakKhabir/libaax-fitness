@@ -4,13 +4,12 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// app/api/customers/route.js
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
     const status = searchParams.get("status");
-    const gender = searchParams.get("gender"); // Add gender filter
+    const gender = searchParams.get("gender");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "12");
     const skip = (page - 1) * limit;
@@ -19,13 +18,23 @@ export async function GET(request) {
     let where = {};
 
     if (search) {
+      // ✅ FIXED: Remove 'mode' parameter - use raw SQL for case-insensitive search
       where.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { phone: { contains: search } },
+        {
+          name: {
+            contains: search,
+            // Remove: mode: "insensitive"
+          },
+        },
+        {
+          phone: {
+            contains: search,
+          },
+        },
       ];
     }
 
-    if (status) {
+    if (status && status !== "all") {
       const today = new Date();
       switch (status) {
         case "active":
@@ -39,19 +48,22 @@ export async function GET(request) {
           const nextWeek = new Date();
           nextWeek.setDate(today.getDate() + 7);
           where.isActive = true;
-          where.expireDate = { gte: today, lte: nextWeek };
+          where.expireDate = {
+            gte: today,
+            lte: nextWeek,
+          };
           break;
         default:
           break;
       }
     }
 
-    // ✅ Add gender filter
+    // Add gender filter
     if (gender && gender !== "all") {
       where.gender = gender;
     }
 
-    // Rest of your API code remains the same...
+    // Get customers with pagination
     const [customers, totalCount] = await Promise.all([
       prisma.customer.findMany({
         where,
@@ -94,7 +106,10 @@ export async function GET(request) {
   } catch (error) {
     console.error("Error fetching customers:", error);
     return NextResponse.json(
-      { error: "Failed to fetch customers" },
+      {
+        error: "Failed to fetch customers",
+        details: error.message,
+      },
       { status: 500 }
     );
   }

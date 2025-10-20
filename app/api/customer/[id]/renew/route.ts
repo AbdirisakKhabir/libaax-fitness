@@ -5,29 +5,35 @@ const prisma = new PrismaClient();
 
 interface RenewRequest {
   expireDate: string;
-  paidAmount: number;
-  userId: number;
+  paidAmount: number | string;
+  userId: number | string;
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // params is now a Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Await the params to get the actual values
     const { id } = await params;
-    const customerId = parseInt(id);
-    
+    const customerId = parseInt(id, 10);
+
+    // Parse request body
     const { expireDate, paidAmount, userId }: RenewRequest = await request.json();
 
-    if (!expireDate || !paidAmount || !userId) {
+    // Convert to numeric values
+    const numericUserId = parseInt(userId as string, 10);
+    const numericPaidAmount = parseFloat(paidAmount as string);
+
+    // Validate required fields
+    if (!expireDate || isNaN(numericPaidAmount) || isNaN(numericUserId)) {
       return NextResponse.json(
-        { error: "Expire date, paid amount, and user ID are required" },
+        { error: "Expire date, paid amount, and user ID are required and must be valid" },
         { status: 400 }
       );
     }
 
-    // Validate customer exists
+    // Validate that customer exists
     const existingCustomer = await prisma.customer.findUnique({
       where: { id: customerId },
     });
@@ -39,7 +45,7 @@ export async function POST(
       );
     }
 
-    // Parse and validate expire date
+    // Parse expire date
     const newExpireDate = new Date(expireDate);
     if (isNaN(newExpireDate.getTime())) {
       return NextResponse.json(
@@ -48,7 +54,7 @@ export async function POST(
       );
     }
 
-    // Update customer expire date and set as active
+    // Update customer record
     const updatedCustomer = await prisma.customer.update({
       where: { id: customerId },
       data: {
@@ -58,23 +64,24 @@ export async function POST(
       },
     });
 
-    // Create payment record
+    // Create new payment record
     const payment = await prisma.payment.create({
       data: {
         customerId: customerId,
-        userId: userId,
-        paidAmount: paidAmount,
+        userId: numericUserId,
+        paidAmount: numericPaidAmount,
         discount: 0,
         balance: existingCustomer.balance,
         date: new Date(),
       },
     });
 
+    // Return success response
     return NextResponse.json({
       success: true,
+      message: "Customer renewed successfully",
       customer: updatedCustomer,
       payment: payment,
-      message: "Customer renewed successfully",
     });
 
   } catch (error) {
