@@ -100,9 +100,9 @@ export default function CustomerDetailModal({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-8 text-white">
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-2 text-white">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-3xl font-bold">Member Details</h2>

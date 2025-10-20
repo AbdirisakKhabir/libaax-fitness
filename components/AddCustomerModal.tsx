@@ -148,21 +148,19 @@ export default function CustomerModal({
       let response;
       if (isEditMode && customer) {
         // Update existing customer
-        console.log('🔄 Updating customer with ID:', customer.id);
         response = await fetch(`/api/customer/${customer.id}`, {
           method: "PUT",
           body: submitFormData,
         });
       } else {
-        // Create new customer
-        console.log('➕ Creating new customer');
+ 
         response = await fetch("/api/customer", {
           method: "POST",
           body: submitFormData,
         });
       }
   
-      console.log('📡 Response status:', response.status);
+  
   
       // Check if response is OK first
       if (!response.ok) {
@@ -514,5 +512,10 @@ export default function CustomerModal({
     </div>
   );
 }
+
+
+
+
+
 
 
