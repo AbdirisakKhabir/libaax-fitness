@@ -77,8 +77,6 @@ export default function CustomersPage() {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [isUsersListModalOpen, setIsUsersListModalOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [customersPerPage] = useState(12);
   // New state for dropdowns and modals
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [isPaymentsListModalOpen, setIsPaymentsListModalOpen] = useState(false);
@@ -87,6 +85,16 @@ export default function CustomersPage() {
   const [isCustomersReportModalOpen, setIsCustomersReportModalOpen] = useState(false);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [customersPerPage] = useState(12);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalCount: 0,
+    hasNext: false,
+    hasPrev: false
+  });
+
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [reportFilters, setReportFilters] = useState<ReportFilters>({
@@ -215,16 +223,13 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
       if (response.ok) {
         const data = await response.json();
         
-        // ✅ FIX: Handle the new response format
-        const customersArray = data.customers || data;
+        // ✅ Handle the paginated response correctly
+        setCustomers(data.customers || []);
+        setFilteredCustomers(data.customers || []);
         
-        setCustomers(customersArray);
-        setFilteredCustomers(customersArray);
-        
-        // If you want to use pagination info later
+        // ✅ Store pagination info
         if (data.pagination) {
-          // You can store pagination info if needed
-          console.log('Pagination:', data.pagination);
+          setPagination(data.pagination);
         }
       } else {
         throw new Error('Failed to fetch customers');
@@ -246,6 +251,16 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
     fetchCustomers();
   }, []);
 
+  useEffect(() => {
+    setIsClient(true);
+    fetchCustomers(currentPage);
+  }, [currentPage]);
+
+  const filterCustomers = (filter: string) => {
+    setSelectedFilter(filter);
+    setCurrentPage(1); // Reset to first page
+    // Remove the applyFilters call - we'll use useEffect
+  };
   const handleAddUser = (userData: any) => {
     setUsers(prev => [...prev, userData]);
     setIsAddUserModalOpen(false);
@@ -278,27 +293,27 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
   const stats = useMemo(() => {
     if (!isClient) return { total: 0, active: 0, expired: 0, expiringThisWeek: 0, male: 0, female: 0 };
     
-    const total = customers.length;
+    // Use the total count from pagination for total
+    const total = pagination.totalCount;
     
-    // Handle null expireDate safely
+    // For other stats, you might want to create a separate stats API
+    // For now, we'll calculate from the current page (less accurate)
     const active = customers.filter(c => {
-      if (!c.expireDate) return false; // If no expire date, consider as inactive
+      if (!c.expireDate) return false;
       return c.isActive && new Date(c.expireDate) >= new Date();
     }).length;
     
     const expired = customers.filter(c => {
-      if (!c.expireDate) return true; // If no expire date, consider as expired
+      if (!c.expireDate) return true;
       return !c.isActive || new Date(c.expireDate) < new Date();
     }).length;
     
     const expiringThisWeek = customers.filter(c => {
-      if (!c.expireDate) return false; // If no expire date, skip
-      
+      if (!c.expireDate) return false;
       const expireDate = new Date(c.expireDate);
       const today = new Date();
       const nextWeek = new Date();
       nextWeek.setDate(today.getDate() + 7);
-      
       return expireDate >= today && expireDate <= nextWeek;
     }).length;
     
@@ -306,8 +321,7 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
     const female = customers.filter(c => c.gender === 'female').length;
   
     return { total, active, expired, expiringThisWeek, male, female };
-  }, [customers, isClient]);
-
+  }, [customers, isClient, pagination.totalCount]);
   const getDayName = (daysFromToday: number) => {
     const date = new Date();
     date.setDate(date.getDate() + daysFromToday);
@@ -320,15 +334,23 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
     return date.toISOString().split('T')[0];
   };
 
-  const filterCustomers = (filter: string) => {
-    setSelectedFilter(filter);
-    applyFilters(filter, searchTerm, genderFilter);
-  };
+  
 
   const handleGenderFilter = (gender: string) => {
     setGenderFilter(gender);
-    applyFilters(selectedFilter, searchTerm, gender);
+    setCurrentPage(1); // Reset to first page
   };
+
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+    setCurrentPage(1); // Reset to first page
+  };
+
+    // Add useEffect to refetch when filters change
+    useEffect(() => {
+      fetchCustomers(1); // Always start from page 1 when filters change
+    }, [searchTerm, selectedFilter]); 
+
 
   const applyFilters = (filter: string, search: string, gender: string) => {
     // ✅ FIX: Make sure we're working with an array
@@ -382,10 +404,7 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
     setFilteredCustomers(filtered);
   };
 
-  const handleSearch = (term: string) => {
-    setSearchTerm(term);
-    applyFilters(selectedFilter, term, genderFilter);
-  };
+
 
   const handleAddCustomer = (newCustomer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
     const customer: Customer = {
@@ -729,12 +748,14 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
   };
 
 
-  const indexOfLastCustomer = currentPage * customersPerPage;
-const indexOfFirstCustomer = indexOfLastCustomer - customersPerPage;
-const currentCustomers = filteredCustomers.slice(indexOfFirstCustomer, indexOfLastCustomer);
-const totalPages = Math.ceil(filteredCustomers.length / customersPerPage);
+//   const indexOfLastCustomer = currentPage * customersPerPage;
+// const indexOfFirstCustomer = indexOfLastCustomer - customersPerPage;
+// const currentCustomers = filteredCustomers.slice(indexOfFirstCustomer, indexOfLastCustomer);
+// const totalPages = Math.ceil(filteredCustomers.length / customersPerPage);
 
 const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+const currentCustomers = filteredCustomers;
+
 
   // Reset to first page when filters change
   useEffect(() => {
@@ -1096,11 +1117,12 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
           
           {/* Pagination Controls */}
             {/* Smart Pagination */}
-            {totalPages > 1 && (
+          {/* Pagination Controls */}
+            {pagination.totalPages > 1 && (
               <div className="flex justify-center items-center space-x-4 mt-8">
                 <button
                   onClick={() => paginate(currentPage - 1)}
-                  disabled={currentPage === 1}
+                  disabled={!pagination.hasPrev}
                   className="flex items-center space-x-2 px-4 py-2 border text-black border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -1111,7 +1133,7 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
                   {/* Generate smart page numbers */}
                   {(() => {
                     const pages = [];
-                    const showPages = 3; // Number of pages to show besides first/last
+                    const showPages = 3;
                     
                     // Always show first page
                     pages.push(
@@ -1119,7 +1141,7 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
                         key={1}
                         onClick={() => paginate(1)}
                         className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
-                          currentPage === 1
+                          pagination.currentPage === 1
                             ? 'bg-blue-500 text-white shadow-md'
                             : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
                         }`}
@@ -1129,7 +1151,7 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
                     );
 
                     // Show ellipsis if there's a gap
-                    if (currentPage > showPages + 1) {
+                    if (pagination.currentPage > showPages + 1) {
                       pages.push(
                         <span key="ellipsis1" className="w-10 h-10 flex items-center justify-center text-gray-500">
                           ...
@@ -1138,14 +1160,14 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
                     }
 
                     // Show pages around current page
-                    for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
-                      if (i === 1 || i === totalPages) continue; // Skip first/last as they're handled separately
+                    for (let i = Math.max(2, pagination.currentPage - 1); i <= Math.min(pagination.totalPages - 1, pagination.currentPage + 1); i++) {
+                      if (i === 1 || i === pagination.totalPages) continue;
                       pages.push(
                         <button
                           key={i}
                           onClick={() => paginate(i)}
                           className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
-                            currentPage === i
+                            pagination.currentPage === i
                               ? 'bg-blue-500 text-white shadow-md'
                               : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
                           }`}
@@ -1156,7 +1178,7 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
                     }
 
                     // Show ellipsis if there's a gap at the end
-                    if (currentPage < totalPages - showPages) {
+                    if (pagination.currentPage < pagination.totalPages - showPages) {
                       pages.push(
                         <span key="ellipsis2" className="w-10 h-10 flex items-center justify-center text-gray-500">
                           ...
@@ -1165,18 +1187,18 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
                     }
 
                     // Always show last page if different from first
-                    if (totalPages > 1) {
+                    if (pagination.totalPages > 1) {
                       pages.push(
                         <button
-                          key={totalPages}
-                          onClick={() => paginate(totalPages)}
+                          key={pagination.totalPages}
+                          onClick={() => paginate(pagination.totalPages)}
                           className={`w-10 h-10 rounded-lg font-semibold transition-colors duration-200 ${
-                            currentPage === totalPages
+                            pagination.currentPage === pagination.totalPages
                               ? 'bg-blue-500 text-white shadow-md'
                               : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
                           }`}
                         >
-                          {totalPages}
+                          {pagination.totalPages}
                         </button>
                       );
                     }
@@ -1187,7 +1209,7 @@ const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
                 
                 <button
                   onClick={() => paginate(currentPage + 1)}
-                  disabled={currentPage === totalPages}
+                  disabled={!pagination.hasNext}
                   className="flex items-center space-x-2 text-black px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors duration-200"
                 >
                   <span>Next</span>

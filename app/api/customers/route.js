@@ -4,11 +4,13 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// app/api/customers/route.js
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
     const status = searchParams.get("status");
+    const gender = searchParams.get("gender"); // Add gender filter
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "12");
     const skip = (page - 1) * limit;
@@ -44,7 +46,12 @@ export async function GET(request) {
       }
     }
 
-    // Get customers with pagination
+    // ✅ Add gender filter
+    if (gender && gender !== "all") {
+      where.gender = gender;
+    }
+
+    // Rest of your API code remains the same...
     const [customers, totalCount] = await Promise.all([
       prisma.customer.findMany({
         where,
@@ -61,7 +68,6 @@ export async function GET(request) {
           balance: true,
           createdAt: true,
           updatedAt: true,
-          // Remove payments from main query to reduce payload
           _count: {
             select: {
               payments: true,

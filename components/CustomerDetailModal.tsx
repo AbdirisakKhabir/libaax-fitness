@@ -28,9 +28,6 @@ export default function CustomerDetailModal({
   const [customerPayments, setCustomerPayments] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
-  // Close modal if no customer or not open
-  if (!isOpen || !customer) return null;
-
   useEffect(() => {
     const fetchPayments = async () => {
       if (customer && isOpen) {
@@ -51,6 +48,9 @@ export default function CustomerDetailModal({
 
     fetchPayments();
   }, [customer, isOpen]);
+
+  // ✅ MOVED: Conditional return to the END, after all hooks
+  if (!isOpen || !customer) return null;
 
   // Safe date parsing with null checks
   const expireDate = customer.expireDate ? new Date(customer.expireDate) : null;

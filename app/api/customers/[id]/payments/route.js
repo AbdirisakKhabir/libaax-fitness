@@ -6,13 +6,27 @@ const prisma = new PrismaClient();
 
 export async function GET(request, { params }) {
   try {
+    // ✅ AWAIT the params first
+    const { id } = await params;
+
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "5");
     const skip = (page - 1) * limit;
 
+    // ✅ Convert customerId to number
+    const customerId = parseInt(id);
+
+    // ✅ Validate that it's a valid number
+    if (isNaN(customerId)) {
+      return NextResponse.json(
+        { error: "Invalid customer ID" },
+        { status: 400 }
+      );
+    }
+
     const payments = await prisma.payment.findMany({
-      where: { customerId: params.id },
+      where: { customerId: customerId },
       select: {
         id: true,
         paidAmount: true,
