@@ -1,12 +1,22 @@
 'use client';
 
 import { Customer } from '@/types/customer';
+import { useState, useEffect } from 'react';
 
 interface CustomerDetailModalProps {
   isOpen: boolean;
-  onEdit: (customer: Customer) => void; // Changed from boolean to function
+  onEdit: (customer: Customer) => void;
   onClose: () => void;
   customer: Customer | null;
+}
+
+// Define Payment type since you're using it
+interface Payment {
+  id: string;
+  paidAmount: number;
+  date: string;
+  discount: number;
+  balance: number;
 }
 
 export default function CustomerDetailModal({ 
@@ -15,7 +25,32 @@ export default function CustomerDetailModal({
   customer, 
   onEdit 
 }: CustomerDetailModalProps) {
+  const [customerPayments, setCustomerPayments] = useState<Payment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
+  // Close modal if no customer or not open
   if (!isOpen || !customer) return null;
+
+  useEffect(() => {
+    const fetchPayments = async () => {
+      if (customer && isOpen) {
+        setLoadingPayments(true);
+        try {
+          const response = await fetch(`/api/customers/${customer.id}/payments`);
+          if (response.ok) {
+            const payments = await response.json();
+            setCustomerPayments(payments);
+          }
+        } catch (error) {
+          console.error('Error fetching payments:', error);
+        } finally {
+          setLoadingPayments(false);
+        }
+      }
+    };
+
+    fetchPayments();
+  }, [customer, isOpen]);
 
   // Safe date parsing with null checks
   const expireDate = customer.expireDate ? new Date(customer.expireDate) : null;
@@ -85,15 +120,18 @@ export default function CustomerDetailModal({
       return;
     }
 
-    if (!expireDate) {
-      const message = `Mudan/Marwo ${customer.name}, your gym membership is currently active. Thank you for being a valued member!`;
-      const whatsappUrl = `https://wa.me/${customer.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
-      window.open(whatsappUrl, '_blank');
+    // Clean phone number (remove any non-digit characters)
+    const cleanPhone = customer.phone.replace(/\D/g, '');
+    
+    let message;
+    if (!expireDate || isExpired) {
+      message = `Hello ${customer.name}, your gym membership needs attention. Please contact us for more information. Thank you for being a valued member!`;
     } else {
-      const message = `Hello ${customer.name}, your gym membership expires on ${formatExpireDate(customer.expireDate)}. Please renew to continue enjoying our services!`;
-      const whatsappUrl = `https://wa.me/${customer.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
-      window.open(whatsappUrl, '_blank');
+      message = `Hello ${customer.name}, your gym membership expires on ${formatExpireDate(customer.expireDate)}. Please renew to continue enjoying our services!`;
     }
+    
+    const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
   };
 
   const isWhatsAppDisabled = !customer.phone;
@@ -102,7 +140,7 @@ export default function CustomerDetailModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-2 text-white">
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-3xl font-bold">Member Details</h2>
@@ -119,13 +157,13 @@ export default function CustomerDetailModal({
           </div>
         </div>
 
-        <div className="p-8 max-h-[60vh] overflow-y-auto">
+        <div className="p-6 max-h-[60vh] overflow-y-auto">
           {/* Customer Profile */}
-          <div className="flex items-center space-x-6 mb-8">
+          <div className="flex items-center space-x-6 mb-6">
             <img
               src={customer.image || '/api/placeholder/100/100'}
               alt={customer.name}
-              className="w-32 h-48 rounded-2xl object-cover border-4 border-gray-200 shadow-lg"
+              className="w-24 h-24 rounded-2xl object-cover border-4 border-gray-200 shadow-lg"
             />
             <div className="flex-1">
               <h3 className="text-2xl font-bold text-gray-900 mb-2">{customer.name}</h3>
@@ -140,7 +178,7 @@ export default function CustomerDetailModal({
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                   </svg>
-                  <span className="font-medium">Member</span>
+                  <span className="font-medium capitalize">{customer.gender || 'Member'}</span>
                 </div>
               </div>
             </div>
@@ -152,6 +190,40 @@ export default function CustomerDetailModal({
               {getStatusIcon()}
             </span>
             {getStatusText()}
+          </div>
+
+          {/* Payment History Section */}
+          <div className="mb-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4">Payment History</h4>
+            {loadingPayments ? (
+              <div className="text-center py-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                <p className="text-gray-500 mt-2">Loading payments...</p>
+              </div>
+            ) : customerPayments.length > 0 ? (
+              <div className="bg-gray-50 rounded-2xl p-4">
+                <div className="space-y-3">
+                  {customerPayments.map((payment) => (
+                    <div key={payment.id} className="flex justify-between items-center p-3 bg-white rounded-lg">
+                      <div>
+                        <p className="font-semibold">${payment.paidAmount}</p>
+                        <p className="text-sm text-gray-500">{new Date(payment.date).toLocaleDateString()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-gray-600">Balance: ${payment.balance}</p>
+                        {payment.discount > 0 && (
+                          <p className="text-sm text-green-600">Discount: ${payment.discount}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-50 rounded-2xl p-6 text-center">
+                <p className="text-gray-500">No payment history available</p>
+              </div>
+            )}
           </div>
 
           {/* Detailed Information */}
@@ -220,8 +292,8 @@ export default function CustomerDetailModal({
                 </p>
               </div>
               <div>
-                <p className="text-gray-600">Last Renewal</p>
-                <p className="font-semibold text-gray-900">{formatDate(registerDate)}</p>
+                <p className="text-gray-600">Monthly Fee</p>
+                <p className="font-semibold text-gray-900">${customer.fee || '0'}</p>
               </div>
             </div>
           </div>
@@ -250,8 +322,8 @@ export default function CustomerDetailModal({
             </button>
             <button
               onClick={() => {
-                onEdit(customer); // This will trigger the edit functionality
-                onClose(); // Close the detail modal
+                onEdit(customer);
+                onClose();
               }}
               className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-all duration-200 font-semibold flex items-center justify-center space-x-2"
             >

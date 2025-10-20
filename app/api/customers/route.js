@@ -1,3 +1,4 @@
+// app/api/customers/route.js
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
@@ -9,13 +10,12 @@ export async function GET(request) {
     const search = searchParams.get("search");
     const status = searchParams.get("status");
     const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "50"); // default 50 per page
-
+    const limit = parseInt(searchParams.get("limit") || "12");
     const skip = (page - 1) * limit;
 
+    // Build where clause for filtering
     let where = {};
 
-    // Search by name or phone
     if (search) {
       where.OR = [
         { name: { contains: search, mode: "insensitive" } },
@@ -23,7 +23,6 @@ export async function GET(request) {
       ];
     }
 
-    // Status filter
     if (status) {
       const today = new Date();
       switch (status) {
@@ -31,25 +30,22 @@ export async function GET(request) {
           where.isActive = true;
           where.expireDate = { gte: today };
           break;
-
         case "expired":
           where.OR = [{ isActive: false }, { expireDate: { lt: today } }];
           break;
-
         case "expiring":
           const nextWeek = new Date();
           nextWeek.setDate(today.getDate() + 7);
           where.isActive = true;
           where.expireDate = { gte: today, lte: nextWeek };
           break;
-
         default:
           break;
       }
     }
 
-    // Run both queries in parallel for speed
-    const [customers, total] = await Promise.all([
+    // Get customers with pagination
+    const [customers, totalCount] = await Promise.all([
       prisma.customer.findMany({
         where,
         select: {
@@ -65,33 +61,28 @@ export async function GET(request) {
           balance: true,
           createdAt: true,
           updatedAt: true,
-          payments: {
+          // Remove payments from main query to reduce payload
+          _count: {
             select: {
-              id: true,
-              paidAmount: true,
-              date: true,
-              discount: true,
-              balance: true,
+              payments: true,
             },
-            orderBy: { date: "desc" },
-            take: 5,
           },
         },
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),
-
       prisma.customer.count({ where }),
     ]);
 
     return NextResponse.json({
-      data: customers,
+      customers,
       pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        currentPage: page,
+        totalPages: Math.ceil(totalCount / limit),
+        totalCount,
+        hasNext: page * limit < totalCount,
+        hasPrev: page > 1,
       },
     });
   } catch (error) {

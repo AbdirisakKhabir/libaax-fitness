@@ -201,27 +201,39 @@ const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Cus
 
 
   // Fetch real customers from API
-  const fetchCustomers = async () => {
-    try {
-      const response = await fetch('/api/customers');
-      if (response.ok) {
-        const realCustomers = await response.json();
-        setCustomers(realCustomers);
-        setFilteredCustomers(realCustomers);
-      } else {
-        throw new Error('Failed to fetch customers');
-      }
-    } catch (error) {
-      console.error('Error fetching customers:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: 'Failed to load customers. Please refresh the page.',
-        timer: 3000,
-        showConfirmButton: false,
-      });
+// Update your fetchCustomers function in the component
+const fetchCustomers = async (page = 1) => {
+  try {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: customersPerPage.toString(),
+    });
+
+    if (searchTerm) params.set('search', searchTerm);
+    if (selectedFilter !== 'all') params.set('status', selectedFilter);
+    // Note: Add gender filter if needed in API
+
+    const response = await fetch(`/api/customers?${params}`);
+    if (response.ok) {
+      const data = await response.json();
+      setCustomers(data.customers);
+      setFilteredCustomers(data.customers);
+      // You can also store pagination info if needed
+      // setPagination(data.pagination);
+    } else {
+      throw new Error('Failed to fetch customers');
     }
-  };
+  } catch (error) {
+    console.error('Error fetching customers:', error);
+    Swal.fire({
+      icon: 'error',
+      title: 'Error',
+      text: 'Failed to load customers. Please refresh the page.',
+      timer: 3000,
+      showConfirmButton: false,
+    });
+  }
+};
 
   useEffect(() => {
     setIsClient(true);
