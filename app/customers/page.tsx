@@ -63,28 +63,10 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function CustomersPage() {
-  // State Management
+// Custom hook for customer management
+function useCustomers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [selectedFilter, setSelectedFilter] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [isClient, setIsClient] = useState(false);
-  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
-  const [users, setUsers] = useState<any[]>([]);
-  const [isUsersListModalOpen, setIsUsersListModalOpen] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-  const [isPaymentsListModalOpen, setIsPaymentsListModalOpen] = useState(false);
-  const [isAddPaymentModalOpen, setIsAddPaymentModalOpen] = useState(false);
-  const [isPaymentsReportModalOpen, setIsPaymentsReportModalOpen] = useState(false);
-  const [isCustomersReportModalOpen, setIsCustomersReportModalOpen] = useState(false);
-  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [customersPerPage] = useState(50);
-  const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -92,53 +74,18 @@ export default function CustomersPage() {
     hasNext: false,
     hasPrev: false
   });
-  const [loading, setLoading] = useState(false);
-  const [genderFilter, setGenderFilter] = useState<string>('all');
 
-  const router = useRouter();
-  const { data: session } = useSession();
-
-  // Helper functions for button classes
-  const getActiveButtonClasses = (color: string) => {
-    const colorClasses = {
-      blue: 'bg-blue-500 text-white shadow-lg shadow-blue-500/25',
-      red: 'bg-red-500 text-white shadow-lg shadow-red-500/25',
-      orange: 'bg-orange-500 text-white shadow-lg shadow-orange-500/25',
-      indigo: 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25',
-      pink: 'bg-pink-500 text-white shadow-lg shadow-pink-500/25',
-      gray: 'bg-gray-500 text-white shadow-lg shadow-gray-500/25',
-    };
-    return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
-  };
-
-  const getInactiveButtonClasses = (color: string) => {
-    const colorClasses = {
-      blue: 'bg-white text-gray-700 border border-gray-300 hover:border-blue-300 hover:bg-blue-50 shadow-sm',
-      red: 'bg-white text-gray-700 border border-gray-300 hover:border-red-300 hover:bg-red-50 shadow-sm',
-      orange: 'bg-white text-gray-700 border border-gray-300 hover:border-orange-300 hover:bg-orange-50 shadow-sm',
-      indigo: 'bg-white text-gray-700 border border-gray-300 hover:border-indigo-300 hover:bg-indigo-50 shadow-sm',
-      pink: 'bg-white text-gray-700 border border-gray-300 hover:border-pink-300 hover:bg-pink-50 shadow-sm',
-      gray: 'bg-white text-gray-700 border border-gray-300 hover:border-gray-300 hover:bg-gray-50 shadow-sm',
-    };
-    return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
-  };
-
-  // Fetch customers from API
-  const fetchCustomers = useCallback(async (page = 1) => {
+  const fetchCustomers = useCallback(async (page = 1, filters = {}) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: customersPerPage.toString(),
+        limit: '50', // Fetch all customers for filtering
+        ...filters
       });
-  
-      // Add all filters to API call
-      if (searchTerm) params.set('search', searchTerm);
-      if (selectedFilter !== 'all') params.set('status', selectedFilter);
-      if (genderFilter !== 'all') params.set('gender', genderFilter);
-  
+
       console.log('🔍 Fetching customers with URL:', `/api/customers?${params}`);
-  
+
       const response = await fetch(`/api/customers?${params}`);
       
       if (response.ok) {
@@ -151,7 +98,6 @@ export default function CustomersPage() {
           setPagination(data.pagination);
         }
       } else {
-        // Get the actual error message from the API
         const errorData = await response.json().catch(() => ({}));
         console.error('❌ API Error Response:', {
           status: response.status,
@@ -173,20 +119,24 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [searchTerm, selectedFilter, genderFilter, customersPerPage]);
+  }, []);
 
-  // Effects
-  useEffect(() => {
-    setIsClient(true);
-    fetchCustomers(currentPage);
-  }, [fetchCustomers, currentPage]);
+  return {
+    customers,
+    loading,
+    pagination,
+    fetchCustomers,
+    setCustomers
+  };
+}
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, selectedFilter, genderFilter]);
+// Custom hook for filters
+function useCustomerFilters() {
+  const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [genderFilter, setGenderFilter] = useState<string>('all');
 
-  // Filter functions
-  const filterCustomers = useCallback((filter: string) => {
+  const handleFilterChange = useCallback((filter: string) => {
     setSelectedFilter(filter);
   }, []);
 
@@ -198,6 +148,94 @@ export default function CustomersPage() {
     setSearchTerm(term);
   }, []);
 
+  const getApiFilters = useCallback(() => {
+    const filters: Record<string, string> = {};
+    
+    if (searchTerm) filters.search = searchTerm;
+    if (genderFilter !== 'all') filters.gender = genderFilter;
+    
+    // Handle date filters
+    if (selectedFilter !== 'all') {
+      const today = new Date().toISOString().split('T')[0];
+      
+      switch (selectedFilter) {
+        case 'today':
+          filters.expireDate = today;
+          break;
+        case 'tomorrow':
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          filters.expireDate = tomorrow.toISOString().split('T')[0];
+          break;
+        case 'expired':
+          filters.status = 'expired';
+          break;
+        default:
+          filters.status = selectedFilter;
+      }
+    }
+    
+    return filters;
+  }, [selectedFilter, searchTerm, genderFilter]);
+
+  return {
+    selectedFilter,
+    searchTerm,
+    genderFilter,
+    handleFilterChange,
+    handleGenderFilter,
+    handleSearch,
+    getApiFilters
+  };
+}
+
+export default function CustomersPage() {
+  // State Management
+  const { customers, loading, pagination, fetchCustomers, setCustomers } = useCustomers();
+  const {
+    selectedFilter,
+    searchTerm,
+    genderFilter,
+    handleFilterChange,
+    handleGenderFilter,
+    handleSearch,
+    getApiFilters
+  } = useCustomerFilters();
+  
+  const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [isClient, setIsClient] = useState(false);
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
+  const [isUsersListModalOpen, setIsUsersListModalOpen] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [isPaymentsListModalOpen, setIsPaymentsListModalOpen] = useState(false);
+  const [isAddPaymentModalOpen, setIsAddPaymentModalOpen] = useState(false);
+  const [isPaymentsReportModalOpen, setIsPaymentsReportModalOpen] = useState(false);
+  const [isCustomersReportModalOpen, setIsCustomersReportModalOpen] = useState(false);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
+
+  const router = useRouter();
+  const { data: session } = useSession();
+
+  // Effects
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    const filters = getApiFilters();
+    fetchCustomers(currentPage, filters);
+  }, [fetchCustomers, currentPage, getApiFilters]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedFilter, searchTerm, genderFilter]);
+
   // Customer management functions
   const handleEditCustomer = (customer: Customer) => {
     setEditingCustomer(customer);
@@ -207,7 +245,8 @@ export default function CustomersPage() {
   const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Customer>) => {
     try {
       // Refresh data to get updated customer from server
-      fetchCustomers(currentPage);
+      const filters = getApiFilters();
+      fetchCustomers(currentPage, filters);
       
       // If the edited customer is currently selected in detail modal, update it
       if (selectedCustomer?.id === customerId) {
@@ -228,7 +267,8 @@ export default function CustomersPage() {
 
     setCustomers(prev => [...prev, customer]);
     // Refresh data to include the new customer
-    fetchCustomers(currentPage);
+    const filters = getApiFilters();
+    fetchCustomers(currentPage, filters);
     
     Swal.fire({
       icon: 'success',
@@ -336,7 +376,8 @@ export default function CustomersPage() {
       }
 
       // Refresh data after renewal
-      fetchCustomers(currentPage);
+      const filters = getApiFilters();
+      fetchCustomers(currentPage, filters);
       setSelectedCustomers([]);
 
       Swal.fire({
@@ -611,6 +652,31 @@ export default function CustomersPage() {
     const date = new Date();
     date.setDate(date.getDate() + daysFromToday);
     return date.toISOString().split('T')[0];
+  };
+
+  // Button style helpers
+  const getActiveButtonClasses = (color: string) => {
+    const colorClasses = {
+      blue: 'bg-blue-500 text-white shadow-lg shadow-blue-500/25',
+      red: 'bg-red-500 text-white shadow-lg shadow-red-500/25',
+      orange: 'bg-orange-500 text-white shadow-lg shadow-orange-500/25',
+      indigo: 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25',
+      pink: 'bg-pink-500 text-white shadow-lg shadow-pink-500/25',
+      gray: 'bg-gray-500 text-white shadow-lg shadow-gray-500/25',
+    };
+    return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
+  };
+
+  const getInactiveButtonClasses = (color: string) => {
+    const colorClasses = {
+      blue: 'bg-white text-gray-700 border border-gray-300 hover:border-blue-300 hover:bg-blue-50 shadow-sm',
+      red: 'bg-white text-gray-700 border border-gray-300 hover:border-red-300 hover:bg-red-50 shadow-sm',
+      orange: 'bg-white text-gray-700 border border-gray-300 hover:border-orange-300 hover:bg-orange-50 shadow-sm',
+      indigo: 'bg-white text-gray-700 border border-gray-300 hover:border-indigo-300 hover:bg-indigo-50 shadow-sm',
+      pink: 'bg-white text-gray-700 border border-gray-300 hover:border-pink-300 hover:bg-pink-50 shadow-sm',
+      gray: 'bg-white text-gray-700 border border-gray-300 hover:border-gray-300 hover:bg-gray-50 shadow-sm',
+    };
+    return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
   };
 
   // Stats calculation
@@ -912,7 +978,7 @@ export default function CustomersPage() {
                 ].map((btn) => (
                   <button
                     key={btn.key}
-                    onClick={() => filterCustomers(btn.key)}
+                    onClick={() => handleFilterChange(btn.key)}
                     className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
                       selectedFilter === btn.key
                         ? getActiveButtonClasses(btn.color)

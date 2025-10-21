@@ -59,6 +59,7 @@ export async function POST(
       where: { id: customerId },
       data: {
         expireDate: newExpireDate,
+        fee: numericPaidAmount,
         isActive: true,
         updatedAt: new Date(),
       },

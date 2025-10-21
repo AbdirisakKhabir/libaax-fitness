@@ -1,5 +1,5 @@
 // components/CustomerModal.tsx
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Customer } from '@/types/customer';
 import Swal from 'sweetalert2';
 
@@ -31,6 +31,7 @@ export default function CustomerModal({
   });
   const [previewImage, setPreviewImage] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset form when modal opens/closes or customer changes
@@ -65,40 +66,73 @@ export default function CustomerModal({
     }
   }, [isOpen, customer]);
 
+  const validateAndProcessImage = useCallback((file: File) => {
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Invalid file type',
+        text: 'Please select an image file (JPEG, PNG, GIF, etc.)',
+        timer: 3000,
+        showConfirmButton: false,
+      });
+      return false;
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      Swal.fire({
+        icon: 'error',
+        title: 'File too large',
+        text: 'Please select an image smaller than 5MB',
+        timer: 3000,
+        showConfirmButton: false,
+      });
+      return false;
+    }
+
+    return true;
+  }, []);
+
+  const handleImageProcess = useCallback((file: File) => {
+    if (!validateAndProcessImage(file)) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setPreviewImage(result);
+      setFormData(prev => ({ ...prev, image: result }));
+    };
+    reader.readAsDataURL(file);
+  }, [validateAndProcessImage]);
+
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        Swal.fire({
-          icon: 'error',
-          title: 'File too large',
-          text: 'Please select an image smaller than 5MB',
-          timer: 2000,
-          showConfirmButton: false,
-        });
-        return;
-      }
-
-      if (!file.type.startsWith('image/')) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Invalid file type',
-          text: 'Please select an image file',
-          timer: 2000,
-          showConfirmButton: false,
-        });
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        setPreviewImage(result);
-        setFormData(prev => ({ ...prev, image: result }));
-      };
-      reader.readAsDataURL(file);
+      handleImageProcess(file);
     }
   };
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      handleImageProcess(file);
+    }
+  }, [handleImageProcess]);
 
   const handleRemoveImage = () => {
     setPreviewImage('');
@@ -106,6 +140,10 @@ export default function CustomerModal({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -122,6 +160,7 @@ export default function CustomerModal({
           timer: 2000,
           showConfirmButton: false,
         });
+        setIsLoading(false);
         return;
       }
   
@@ -143,6 +182,12 @@ export default function CustomerModal({
   
       if (fileInputRef.current?.files?.[0]) {
         submitFormData.append("image", fileInputRef.current.files[0]);
+      } else if (formData.image && !formData.image.startsWith('blob:')) {
+        // If we have a base64 image from drag & drop, convert it to a file
+        const base64Response = await fetch(formData.image);
+        const blob = await base64Response.blob();
+        const file = new File([blob], 'profile-image.jpg', { type: 'image/jpeg' });
+        submitFormData.append("image", file);
       }
   
       let response;
@@ -153,18 +198,14 @@ export default function CustomerModal({
           body: submitFormData,
         });
       } else {
- 
         response = await fetch("/api/customer", {
           method: "POST",
           body: submitFormData,
         });
       }
   
-  
-  
       // Check if response is OK first
       if (!response.ok) {
-        // Try to get error message from response
         let errorMessage = `HTTP error! status: ${response.status}`;
         try {
           const errorText = await response.text();
@@ -317,37 +358,80 @@ export default function CustomerModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-8 max-h-[60vh] overflow-y-auto">
-          {/* Image Upload Section */}
+          {/* Image Upload Section with Drag & Drop */}
           <div className="text-center">
-            <div className="relative inline-block">
-              <div className="w-32 h-32 rounded-2xl border-4 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center overflow-hidden">
+            <div 
+              className={`relative inline-block w-full max-w-xs mx-auto ${
+                isDragOver ? 'scale-105' : ''
+              } transition-transform duration-200`}
+            >
+              {/* Drag & Drop Area */}
+              <div
+                className={`relative w-32 h-32 rounded-2xl border-4 border-dashed flex items-center justify-center overflow-hidden cursor-pointer transition-all duration-300 ${
+                  isDragOver
+                    ? 'border-blue-500 bg-blue-50 scale-105'
+                    : previewImage
+                    ? 'border-gray-300 bg-gray-50'
+                    : 'border-gray-300 bg-gray-50 hover:border-gray-400 hover:bg-gray-100'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={triggerFileInput}
+              >
                 {previewImage ? (
-                  <img
-                    src={previewImage}
-                    alt="Preview"
-                    className="w-full h-full object-cover"
-                  />
+                  <>
+                    <img
+                      src={previewImage}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    {/* Hover overlay */}
+                    <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-300 flex items-center justify-center">
+                      <div className="text-white opacity-0 hover:opacity-100 transition-opacity duration-300 text-center">
+                        <svg className="w-8 h-8 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-xs font-medium">Change Photo</span>
+                      </div>
+                    </div>
+                  </>
                 ) : (
-                  <div className="text-gray-400">
-                    <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                  <div className="text-center p-4">
+                    {isDragOver ? (
+                      <div className="text-blue-500">
+                        <svg className="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-sm font-medium">Drop to upload</p>
+                      </div>
+                    ) : (
+                      <div className="text-gray-400">
+                        <svg className="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <p className="text-sm font-medium">Upload Photo</p>
+                        <p className="text-xs mt-1">Click or drag</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
               
-              {/* Upload Button */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading}
-                className="absolute bottom-0 right-0 bg-blue-500 text-white p-2 rounded-full shadow-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </button>
+              {/* Camera Button */}
+              {!previewImage && (
+                <button
+                  type="button"
+                  onClick={triggerFileInput}
+                  disabled={isLoading}
+                  className="absolute -bottom-2 -right-2 bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 transition-all duration-200 hover:scale-110 disabled:opacity-50 z-10"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+              )}
 
               {/* Remove Button */}
               {previewImage && (
@@ -355,27 +439,34 @@ export default function CustomerModal({
                   type="button"
                   onClick={handleRemoveImage}
                   disabled={isLoading}
-                  className="absolute top-0 right-0 bg-red-500 text-white p-2 rounded-full shadow-lg hover:bg-red-600 transition-colors disabled:opacity-50"
+                  className="absolute -top-2 -right-2 bg-red-500 text-white p-2 rounded-full shadow-lg hover:bg-red-600 transition-all duration-200 hover:scale-110 disabled:opacity-50 z-10"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               )}
-            </div>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="hidden"
-              disabled={isLoading}
-            />
+              {/* File Input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                disabled={isLoading}
+              />
+            </div>
             
-            <p className="text-sm text-gray-500 mt-4">
-              Click the camera icon to upload a profile picture
-            </p>
+            <div className="mt-4 space-y-2">
+              <p className="text-sm text-gray-600 font-medium">
+                Profile Picture
+              </p>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                Click to browse, drag & drop, or use the camera icon. 
+                Supports JPG, PNG, GIF (max 5MB)
+              </p>
+            </div>
           </div>
 
           {/* Form Fields */}
@@ -512,10 +603,3 @@ export default function CustomerModal({
     </div>
   );
 }
-
-
-
-
-
-
-
