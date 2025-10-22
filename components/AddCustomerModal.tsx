@@ -148,6 +148,10 @@ export default function CustomerModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+  
+    // 🧠 Prevent duplicate submissions
+    if (isLoading) return; // <- prevent duplicate SweetAlert and API calls
+  
     setIsLoading(true);
   
     try {
@@ -166,11 +170,11 @@ export default function CustomerModal({
   
       const submitFormData = new FormData();
       submitFormData.append("name", formData.name);
-      
+  
       if (formData.phone.trim()) {
         submitFormData.append("phone", formData.phone);
       }
-      
+  
       submitFormData.append("registerDate", formData.registerDate);
   
       if (formData.expireDate) {
@@ -182,17 +186,15 @@ export default function CustomerModal({
   
       if (fileInputRef.current?.files?.[0]) {
         submitFormData.append("image", fileInputRef.current.files[0]);
-      } else if (formData.image && !formData.image.startsWith('blob:')) {
-        // If we have a base64 image from drag & drop, convert it to a file
+      } else if (formData.image && !formData.image.startsWith("blob:")) {
         const base64Response = await fetch(formData.image);
         const blob = await base64Response.blob();
-        const file = new File([blob], 'profile-image.jpg', { type: 'image/jpeg' });
+        const file = new File([blob], "profile-image.jpg", { type: "image/jpeg" });
         submitFormData.append("image", file);
       }
   
       let response;
       if (isEditMode && customer) {
-        // Update existing customer
         response = await fetch(`/api/customer/${customer.id}`, {
           method: "PUT",
           body: submitFormData,
@@ -204,7 +206,6 @@ export default function CustomerModal({
         });
       }
   
-      // Check if response is OK first
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`;
         try {
@@ -214,30 +215,27 @@ export default function CustomerModal({
             errorMessage = errorData.error || errorData.message || errorMessage;
           }
         } catch (parseError) {
-          console.error('Error parsing error response:', parseError);
+          console.error("Error parsing error response:", parseError);
         }
         throw new Error(errorMessage);
       }
   
-      // Parse the successful response
       let resultCustomer;
       try {
         const responseText = await response.text();
         if (responseText) {
           resultCustomer = JSON.parse(responseText);
         } else {
-          throw new Error('Empty response from server');
+          throw new Error("Empty response from server");
         }
       } catch (parseError) {
-        console.error('Error parsing success response:', parseError);
-        throw new Error('Invalid response from server');
+        console.error("Error parsing success response:", parseError);
+        throw new Error("Invalid response from server");
       }
   
-      console.log('✅ API response:', resultCustomer);
+      console.log("✅ API response:", resultCustomer);
   
-      // Call the appropriate callback
       if (isEditMode && customer && onUpdate) {
-        console.log('🔄 Calling onUpdate callback');
         onUpdate(customer.id, {
           name: formData.name,
           phone: formData.phone.trim() || null,
@@ -249,7 +247,6 @@ export default function CustomerModal({
           isActive: customer.isActive,
         });
       } else if (onSave) {
-        console.log('💾 Calling onSave callback');
         onSave({
           name: formData.name,
           phone: formData.phone.trim() || null,
@@ -263,58 +260,68 @@ export default function CustomerModal({
         });
       }
   
-      // WhatsApp notification only for new customers
       if (!isEditMode && formData.phone.trim()) {
         try {
-          console.log('📱 Sending WhatsApp notifications');
-          // Send welcome message to customer
-          await fetch('/api/whatsapp/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          console.log("📱 Sending WhatsApp notifications");
+          await fetch("/api/whatsapp/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               phone: formData.phone,
               name: formData.name,
               gender: formData.gender,
               fee: formData.fee,
               registerDate: formData.registerDate,
-              messageType: 'welcome'
+              messageType: "welcome",
             }),
           });
   
-          // Send admin notification
-          await fetch('/api/whatsapp/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          await fetch("/api/whatsapp/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               phone: "634363767",
               name: formData.name,
               gender: formData.gender,
               fee: formData.fee,
               registerDate: formData.registerDate,
-              messageType: 'admin'
+              messageType: "admin",
             }),
           });
         } catch (whatsappError) {
-          console.error('WhatsApp integration error:', whatsappError);
+          console.error("WhatsApp integration error:", whatsappError);
         }
       }
   
-      // Success message
       Swal.fire({
         icon: "success",
-        title: `${isEditMode ? 'Customer Updated!' : 'Customer Added!'}`,
-        text: `${formData.name} has been successfully ${isEditMode ? 'updated' : 'added'}.`,
+        title: `${isEditMode ? "Customer Updated!" : "Customer Added!"}`,
+        text: `${formData.name} has been successfully ${isEditMode ? "updated" : "added"}.`,
         timer: 3000,
         showConfirmButton: false,
       });
   
-      onClose();
+      // ✅ Reset form after successful response
+      setFormData({
+        name: "",
+        phone: "",
+        registerDate: "",
+        expireDate: "",
+        fee: "",
+        gender: "",
+        image: "",
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+  
     } catch (error) {
-      console.error(`Error ${isEditMode ? 'updating' : 'creating'} customer:`, error);
+      console.error(`Error ${isEditMode ? "updating" : "creating"} customer:`, error);
       Swal.fire({
         icon: "error",
-        title: `${isEditMode ? 'Update' : 'Creation'} Failed`,
-        text: error instanceof Error ? error.message : `Failed to ${isEditMode ? 'update' : 'create'} customer. Please try again.`,
+        title: `${isEditMode ? "Update" : "Creation"} Failed`,
+        text:
+          error instanceof Error
+            ? error.message
+            : `Failed to ${isEditMode ? "update" : "create"} customer. Please try again.`,
         timer: 3000,
         showConfirmButton: false,
       });
@@ -322,6 +329,7 @@ export default function CustomerModal({
       setIsLoading(false);
     }
   };
+  
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
