@@ -13,13 +13,13 @@ interface CustomUser extends User {
   role: string;
 }
 
-// Extend the JWT type to include our custom fields
-interface CustomJWT extends JWT {
+// Use type intersection instead of interface extension
+type CustomJWT = JWT & {
   id?: string;
   username?: string;
   role?: string;
   exp?: number;
-}
+};
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -83,24 +83,29 @@ export const authOptions: NextAuthOptions = {
           id: customUser.id,
           username: customUser.username,
           role: customUser.role,
-          exp: Math.floor(Date.now() / 1000) + (1 * 60 * 60) // Set expiration to 1 hour
+          exp: Math.floor(Date.now() / 1000) + (1 * 60 * 60)
         };
       }
       
-      // Check if token is expired - properly typed
-      const customToken = token as CustomJWT;
-      if (customToken.exp && Date.now() >= customToken.exp * 1000) {
-        throw new Error('Token expired');
+      // Check if token is expired - ensure exp is treated as number
+      if (token.exp) {
+        const expTime = Number(token.exp) * 1000; // Convert to milliseconds
+        if (Date.now() >= expTime) {
+          throw new Error('Token expired');
+        }
       }
       
-      return customToken;
+      return token;
     },
     async session({ session, token }) {
       const customToken = token as CustomJWT;
       
-      // Check if token is expired
-      if (customToken.exp && Date.now() >= customToken.exp * 1000) {
-        throw new Error('Session expired');
+      // Check if token is expired - ensure exp is treated as number
+      if (customToken.exp) {
+        const expTime = Number(customToken.exp) * 1000; // Convert to milliseconds
+        if (Date.now() >= expTime) {
+          throw new Error('Session expired');
+        }
       }
 
       return {
@@ -111,7 +116,7 @@ export const authOptions: NextAuthOptions = {
           username: customToken.username as string,
           role: customToken.role as string
         },
-        expires: new Date(Date.now() + (1 * 60 * 60 * 1000)).toISOString() // Set session expiration
+        expires: new Date(Date.now() + (1 * 60 * 60 * 1000)).toISOString()
       };
     },
     async redirect({ url, baseUrl }) {
