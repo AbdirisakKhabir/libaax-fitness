@@ -136,7 +136,7 @@ function useCustomers() {
       setActiveStat(statType);
       
       // Fetch customers for the specific stat type
-      const response = await fetch(`/api/customers/stats?type=${statType}&page=1&limit=50`);
+      const response = await fetch(`/api/customers/stats?type=${statType}&page=1&limit=150`);
       
       if (response.ok) {
         const data = await response.json();
