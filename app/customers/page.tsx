@@ -80,11 +80,11 @@ function useCustomers() {
       setLoading(true);
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: '50',
+        limit: '150',
         ...filters
       });
 
-      console.log('🔍 Fetching customers with URL:', `/api/customers?${params}`);
+    
 
       const response = await fetch(`/api/customers?${params}`);
       
