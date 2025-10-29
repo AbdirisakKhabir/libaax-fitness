@@ -63,7 +63,6 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Custom hook for customer management
 function useCustomers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,13 +73,14 @@ function useCustomers() {
     hasNext: false,
     hasPrev: false
   });
+  const [activeStat, setActiveStat] = useState<string | null>(null);
 
   const fetchCustomers = useCallback(async (page = 1, filters = {}) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
         page: page.toString(),
-        limit: '50', // Fetch all customers for filtering
+        limit: '50',
         ...filters
       });
 
@@ -121,12 +121,70 @@ function useCustomers() {
     }
   }, []);
 
+  const handleStatClick = useCallback(async (statType: string) => {
+    try {
+      setLoading(true);
+      
+      // If clicking the same stat again, reset to show all
+      if (activeStat === statType) {
+        setActiveStat(null);
+        const filters = {}; // Reset filters when showing all
+        await fetchCustomers(1, filters);
+        return;
+      }
+
+      setActiveStat(statType);
+      
+      // Fetch customers for the specific stat type
+      const response = await fetch(`/api/customers/stats?type=${statType}&page=1&limit=50`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCustomers(data.customers || []);
+        
+        if (data.pagination) {
+          setPagination(data.pagination);
+        }
+        
+        // Show success message
+        Swal.fire({
+          icon: 'success',
+          title: `${statType.charAt(0).toUpperCase() + statType.slice(1)} Members`,
+          text: `Showing ${data.pagination.totalCount} ${statType} members`,
+          timer: 2000,
+          showConfirmButton: false,
+        });
+      } else {
+        throw new Error('Failed to fetch stat data');
+      }
+    } catch (error) {
+      console.error('Error fetching stat data:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Failed to load member data',
+        timer: 3000,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [activeStat, fetchCustomers]);
+
+  const resetStatFilter = useCallback(() => {
+    setActiveStat(null);
+    const filters = {};
+    fetchCustomers(1, filters);
+  }, [fetchCustomers]);
+
   return {
     customers,
     loading,
     pagination,
+    activeStat,
     fetchCustomers,
-    setCustomers
+    setCustomers,
+    handleStatClick,
+    resetStatFilter
   };
 }
 
@@ -218,6 +276,56 @@ export default function CustomersPage() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
+  // Add this state to track which stat is active
+  const [activeStat, setActiveStat] = useState<string | null>(null);
+  // Add this state to track which stat is activ
+
+    // Add this function to handle stat clicks
+    const handleStatClick = async (statType: string) => {
+      try {
+        // If clicking the same stat again, reset to show all
+        if (activeStat === statType) {
+          setActiveStat(null);
+          const filters = getApiFilters();
+          await fetchCustomers(1, filters);
+          return;
+        }
+
+        setActiveStat(statType);
+        
+        // Fetch customers for the specific stat type
+        const response = await fetch(`/api/customers/stats?type=${statType}&page=1&limit=50`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          setCustomers(data.customers || []);
+          
+          if (data.pagination) {
+            // You might need to update your pagination state here
+            // For example: setPagination(data.pagination);
+          }
+          
+          // Show success message
+          Swal.fire({
+            icon: 'success',
+            title: `${statType.charAt(0).toUpperCase() + statType.slice(1)} Members`,
+            text: `Showing ${data.pagination?.totalCount || data.customers?.length} ${statType} members`,
+            timer: 2000,
+            showConfirmButton: false,
+          });
+        } else {
+          throw new Error('Failed to fetch stat data');
+        }
+      } catch (error) {
+        console.error('Error fetching stat data:', error);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: 'Failed to load member data',
+          timer: 3000,
+        });
+      }
+    };
 
   const router = useRouter();
   const { data: session } = useSession();
@@ -242,6 +350,8 @@ export default function CustomersPage() {
     setIsCustomerModalOpen(true);
   };
 
+
+  
   const handleUpdateCustomer = async (customerId: string, updatedData: Partial<Customer>) => {
     try {
       // Refresh data to get updated customer from server
@@ -679,7 +789,9 @@ export default function CustomersPage() {
     return colorClasses[color as keyof typeof colorClasses] || colorClasses.blue;
   };
 
-  // Stats calculation
+
+
+  
   const stats = useMemo(() => {
     if (!isClient) return { total: 0, active: 0, expired: 0, expiringThisWeek: 0, male: 0, female: 0 };
     
@@ -687,28 +799,38 @@ export default function CustomersPage() {
     
     const active = customers.filter(c => {
       if (!c.expireDate) return false;
-      return c.isActive && new Date(c.expireDate) >= new Date();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return c.isActive && new Date(c.expireDate) >= today;
     }).length;
     
     const expired = customers.filter(c => {
       if (!c.expireDate) return true;
-      return !c.isActive || new Date(c.expireDate) < new Date();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return !c.isActive || new Date(c.expireDate) < today;
     }).length;
     
     const expiringThisWeek = customers.filter(c => {
       if (!c.expireDate) return false;
-      const expireDate = new Date(c.expireDate);
       const today = new Date();
+      today.setHours(0, 0, 0, 0);
       const nextWeek = new Date();
       nextWeek.setDate(today.getDate() + 7);
-      return expireDate >= today && expireDate <= nextWeek;
+      nextWeek.setHours(23, 59, 59, 999);
+      return c.isActive && new Date(c.expireDate) >= today && new Date(c.expireDate) <= nextWeek;
     }).length;
     
     const male = customers.filter(c => c.gender === 'male').length;
     const female = customers.filter(c => c.gender === 'female').length;
-
+  
     return { total, active, expired, expiringThisWeek, male, female };
   }, [customers, isClient, pagination.totalCount]);
+
+
+
+
+
 
   // Loading state
   if (!isClient) {
@@ -900,54 +1022,78 @@ export default function CustomersPage() {
 
           {/* Quick Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-blue-100 text-sm font-medium">Total Members</p>
-                  <p className="text-3xl font-bold mt-2">{stats.total}</p>
-                </div>
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                  <Users className="w-7 h-7 text-white" />
-                </div>
+          <div 
+            className={`bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer transform transition-all duration-200 hover:scale-105 hover:shadow-xl ${
+              activeStat === 'all' ? 'ring-4 ring-blue-300 ring-opacity-50' : ''
+            }`}
+            onClick={() => {
+              setActiveStat(null);
+              const filters = getApiFilters();
+              fetchCustomers(1, filters);
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-100 text-sm font-medium">Total Members</p>
+                <p className="text-3xl font-bold mt-2">{stats.total}</p>
               </div>
-            </div>
-            
-            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-green-100 text-sm font-medium">Active</p>
-                  <p className="text-3xl font-bold mt-2">{stats.active}</p>
-                </div>
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                  <CheckCircle className="w-7 h-7 text-white" />
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-red-100 text-sm font-medium">Expired</p>
-                  <p className="text-3xl font-bold mt-2">{stats.expired}</p>
-                </div>
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                  <Clock className="w-7 h-7 text-white" />
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-orange-100 text-sm font-medium">Expiring Soon</p>
-                  <p className="text-3xl font-bold mt-2">{stats.expiringThisWeek}</p>
-                </div>
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                  <AlertTriangle className="w-7 h-7 text-white" />
-                </div>
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                <Users className="w-7 h-7 text-white" />
               </div>
             </div>
           </div>
+          
+          <div 
+            className={`bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer transform transition-all duration-200 hover:scale-105 hover:shadow-xl ${
+              activeStat === 'active' ? 'ring-4 ring-green-300 ring-opacity-50' : ''
+            }`}
+            onClick={() => handleStatClick('active')}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-green-100 text-sm font-medium">Active</p>
+                <p className="text-3xl font-bold mt-2">{stats.active}</p>
+              </div>
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                <CheckCircle className="w-7 h-7 text-white" />
+              </div>
+            </div>
+          </div>
+          
+          <div 
+            className={`bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer transform transition-all duration-200 hover:scale-105 hover:shadow-xl ${
+              activeStat === 'expired' ? 'ring-4 ring-red-300 ring-opacity-50' : ''
+            }`}
+            onClick={() => handleStatClick('expired')}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-red-100 text-sm font-medium">Expired</p>
+                <p className="text-3xl font-bold mt-2">{stats.expired}</p>
+              </div>
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                <Clock className="w-7 h-7 text-white" />
+              </div>
+            </div>
+          </div>
+          
+          <div 
+            className={`bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer transform transition-all duration-200 hover:scale-105 hover:shadow-xl ${
+              activeStat === 'expiring' ? 'ring-4 ring-orange-300 ring-opacity-50' : ''
+            }`}
+            onClick={() => handleStatClick('expiring')}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-orange-100 text-sm font-medium">Expiring Soon</p>
+                <p className="text-3xl font-bold mt-2">{stats.expiringThisWeek}</p>
+              </div>
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                <AlertTriangle className="w-7 h-7 text-white" />
+              </div>
+            </div>
+          </div>
+        </div>
 
           {/* Search and Filter Section */}
           <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg p-8 mb-8 border border-gray-200 transition-all duration-300 hover:shadow-xl">
@@ -1043,6 +1189,23 @@ export default function CustomersPage() {
               )}
             </div>
           </div>
+         
+          {activeStat && (
+            <div className="mb-6 flex justify-center">
+              <button
+                onClick={() => {
+                  setActiveStat(null);
+                  const filters = getApiFilters();
+                  fetchCustomers(1, filters);
+                }}
+                className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-lg flex items-center space-x-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Show All Members</span>
+              </button>
+            </div>
+          )}
+
 
           {/* Select All Checkbox */}
           {customers.length > 0 && (

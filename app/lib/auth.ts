@@ -1,9 +1,25 @@
-import { NextAuthOptions } from 'next-auth';
+// lib/auth.ts
+import { NextAuthOptions, User } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
+import { JWT } from 'next-auth/jwt';
 
 const prisma = new PrismaClient();
+
+// Extend the built-in User type to include our custom fields
+interface CustomUser extends User {
+  username: string;
+  role: string;
+}
+
+// Extend the JWT type to include our custom fields
+interface CustomJWT extends JWT {
+  id?: string;
+  username?: string;
+  role?: string;
+  exp?: number;
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -13,7 +29,7 @@ export const authOptions: NextAuthOptions = {
         username: { label: 'Username', type: 'text' },
         password: { label: 'Password', type: 'password' }
       },
-      async authorize(credentials) {
+      async authorize(credentials): Promise<CustomUser | null> {
         if (!credentials?.username || !credentials?.password) {
           return null;
         }
@@ -37,55 +53,69 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        // Return user object matching your User model structure
         return {
           id: user.id.toString(),
           username: user.username,
           role: user.role,
-          // Add empty name and email to satisfy NextAuth requirements
-          name: user.username, // Using username as name
-          email: `${user.username}@gym.com` // Fallback email
+          name: user.username,
+          email: `${user.username}@gym.com`
         };
       }
     })
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 1 * 60 * 60, // 1 hour in seconds (3600 seconds)
+  },
+  jwt: {
+    maxAge: 1 * 60 * 60, // 1 hour in seconds
   },
   pages: {
     signIn: '/login',
     signOut: '/login',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user }): Promise<CustomJWT> {
       if (user) {
-        // Type assertion to ensure user has the properties we need
-        const userWithExtras = user as any;
+        const customUser = user as CustomUser;
         return {
           ...token,
-          id: userWithExtras.id,
-          username: userWithExtras.username,
-          role: userWithExtras.role
+          id: customUser.id,
+          username: customUser.username,
+          role: customUser.role,
+          exp: Math.floor(Date.now() / 1000) + (1 * 60 * 60) // Set expiration to 1 hour
         };
       }
-      return token;
+      
+      // Check if token is expired - properly typed
+      const customToken = token as CustomJWT;
+      if (customToken.exp && Date.now() >= customToken.exp * 1000) {
+        throw new Error('Token expired');
+      }
+      
+      return customToken;
     },
     async session({ session, token }) {
+      const customToken = token as CustomJWT;
+      
+      // Check if token is expired
+      if (customToken.exp && Date.now() >= customToken.exp * 1000) {
+        throw new Error('Session expired');
+      }
+
       return {
         ...session,
         user: {
           ...session.user,
-          id: token.id as string,
-          username: token.username as string,
-          role: token.role as string
-        }
+          id: customToken.id as string,
+          username: customToken.username as string,
+          role: customToken.role as string
+        },
+        expires: new Date(Date.now() + (1 * 60 * 60 * 1000)).toISOString() // Set session expiration
       };
     },
     async redirect({ url, baseUrl }) {
-      // Allows relative callback URLs
       if (url.startsWith("/")) return `${baseUrl}${url}`
-      // Allows callback URLs on the same origin
       else if (new URL(url).origin === baseUrl) return url
       return baseUrl
     }

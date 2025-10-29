@@ -12,7 +12,7 @@ interface RenewalModalProps {
   }) => void;
   selectedCount: number;
   selectedCustomers: any[];
-  currentUser: any; // Add current user info
+  currentUser: any;
 }
 
 export default function RenewalModal({ 
@@ -27,13 +27,23 @@ export default function RenewalModal({
   const [expireDates, setExpireDates] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Debug: Log when modal opens and selectedCustomers changes
+  useEffect(() => {
+    console.log('🔍 RenewalModal - isOpen:', isOpen);
+    console.log('🔍 RenewalModal - selectedCustomers:', selectedCustomers);
+    console.log('🔍 RenewalModal - selectedCount:', selectedCount);
+  }, [isOpen, selectedCustomers, selectedCount]);
+
   // Set default values when modal opens
   useEffect(() => {
     if (isOpen && selectedCustomers.length > 0) {
+      console.log('🔄 Setting default values for:', selectedCustomers.length, 'customers');
+      
       const defaultAmounts: { [key: string]: number } = {};
       const defaultDates: { [key: string]: string } = {};
 
       selectedCustomers.forEach(customer => {
+        console.log('📝 Processing customer:', customer.id, customer.name);
         // Set default paid amount to customer's fee
         defaultAmounts[customer.id] = customer.fee || 0;
         
@@ -43,8 +53,13 @@ export default function RenewalModal({
         defaultDates[customer.id] = defaultDate.toISOString().split('T')[0];
       });
 
+      console.log('💰 Default amounts:', defaultAmounts);
+      console.log('📅 Default dates:', defaultDates);
+      
       setPaidAmounts(defaultAmounts);
       setExpireDates(defaultDates);
+    } else if (isOpen && selectedCustomers.length === 0) {
+      console.warn('⚠️ Modal is open but no selected customers!');
     }
   }, [isOpen, selectedCustomers]);
 
@@ -66,6 +81,12 @@ export default function RenewalModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('🚀 Submitting renewal with:', {
+      customerIds: selectedCustomers.map(c => c.id),
+      paidAmounts,
+      expireDates
+    });
+
     // Validate all fields
     for (const customer of selectedCustomers) {
       if (!paidAmounts[customer.id] || paidAmounts[customer.id] <= 0) {
@@ -130,7 +151,8 @@ export default function RenewalModal({
             <div>
               <h2 className="text-2xl font-bold">Renew Memberships</h2>
               <p className="text-green-100 mt-1">
-                Renew {selectedCount} selected customer(s)
+                Renew {selectedCustomers.length} selected customer(s) 
+                (Expected: {selectedCount})
               </p>
             </div>
             <button
@@ -148,87 +170,95 @@ export default function RenewalModal({
         <form onSubmit={handleSubmit} className="max-h-[70vh] overflow-y-auto">
           {/* Customer List with Inputs */}
           <div className="p-6 space-y-6">
-            {selectedCustomers.map((customer, index) => (
-              <div
-                key={customer.id}
-                className="bg-gray-50 rounded-xl p-6 border border-gray-200 hover:border-green-300 transition-all duration-200"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                      <User className="w-5 h-5 text-green-600" />
+            {selectedCustomers.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-yellow-500 text-6xl mb-4">⚠️</div>
+                <h3 className="text-xl font-semibold text-gray-800 mb-2">No Customers Selected</h3>
+                <p className="text-gray-600">Please select customers to renew their memberships.</p>
+              </div>
+            ) : (
+              selectedCustomers.map((customer, index) => (
+                <div
+                  key={customer.id}
+                  className="bg-gray-50 rounded-xl p-6 border border-gray-200 hover:border-green-300 transition-all duration-200"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                        <User className="w-5 h-5 text-green-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{customer.name}</h3>
+                        <p className="text-sm text-gray-500">
+                          {customer.phone || 'No phone number'} • Fee: ${customer.fee}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{customer.name}</h3>
-                      <p className="text-sm text-gray-500">
-                        {customer.phone || 'No phone number'} • Fee: ${customer.fee}
+                    <div className="text-right">
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                        customer.isActive && new Date(customer.expireDate) >= new Date()
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {customer.isActive && new Date(customer.expireDate) >= new Date()
+                          ? 'Active'
+                          : 'Expired'}
+                      </span>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Current: {new Date(customer.expireDate).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                      customer.isActive && new Date(customer.expireDate) >= new Date()
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {customer.isActive && new Date(customer.expireDate) >= new Date()
-                        ? 'Active'
-                        : 'Expired'}
-                    </span>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Current: {new Date(customer.expireDate).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Paid Amount Input */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
-                      <DollarSign className="w-4 h-4 mr-2 text-gray-400" />
-                      Paid Amount *
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        required
-                        value={paidAmounts[customer.id] || ''}
-                        onChange={(e) => handlePaidAmountChange(customer.id, e.target.value)}
-                        disabled={isSubmitting}
-                        className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-black focus:border-green-500 bg-white transition-all duration-200 disabled:opacity-50"
-                        placeholder="0.00"
-                      />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Paid Amount Input */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        <DollarSign className="w-4 h-4 mr-2 text-gray-400" />
+                        Paid Amount *
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          required
+                          value={paidAmounts[customer.id] || ''}
+                          onChange={(e) => handlePaidAmountChange(customer.id, e.target.value)}
+                          disabled={isSubmitting}
+                          className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-black focus:border-green-500 bg-white transition-all duration-200 disabled:opacity-50"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Standard fee: ${customer.fee}
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Standard fee: ${customer.fee}
-                    </p>
-                  </div>
 
-                  {/* Expire Date Input */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
-                      <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-                      New Expire Date *
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={expireDates[customer.id] || ''}
-                      onChange={(e) => handleExpireDateChange(customer.id, e.target.value)}
-                      disabled={isSubmitting}
-                      min={new Date().toISOString().split('T')[0]}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-black bg-white transition-all duration-200 disabled:opacity-50"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Must be in the future
-                    </p>
+                    {/* Expire Date Input */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+                        <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                        New Expire Date *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={expireDates[customer.id] || ''}
+                        onChange={(e) => handleExpireDateChange(customer.id, e.target.value)}
+                        disabled={isSubmitting}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 text-black bg-white transition-all duration-200 disabled:opacity-50"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Must be in the future
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
           {/* Summary and Actions */}
@@ -238,7 +268,7 @@ export default function RenewalModal({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white rounded-lg p-3 border border-gray-200">
                     <p className="text-sm text-gray-600">Total Customers</p>
-                    <p className="text-xl font-bold text-gray-800">{selectedCount}</p>
+                    <p className="text-xl font-bold text-gray-800">{selectedCustomers.length}</p>
                   </div>
                   <div className="bg-white rounded-lg p-3 border border-gray-200">
                     <p className="text-sm text-gray-600">Total Amount</p>
@@ -260,7 +290,7 @@ export default function RenewalModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || selectedCustomers.length === 0}
                   className="flex-1 lg:flex-none px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 transition-all duration-200 font-semibold shadow-lg disabled:opacity-50 flex items-center justify-center space-x-2"
                 >
                   {isSubmitting ? (
@@ -271,7 +301,7 @@ export default function RenewalModal({
                   ) : (
                     <>
                       <Users className="w-4 h-4" />
-                      <span>Renew All ({selectedCount})</span>
+                      <span>Renew All ({selectedCustomers.length})</span>
                     </>
                   )}
                 </button>

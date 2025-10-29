@@ -1,18 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import { signIn, signOut } from 'next-auth/react';
 import Swal from 'sweetalert2';
-import { Lock } from 'lucide-react'
+import { Lock } from 'lucide-react';
 import Link from 'next/link';
+
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-
   const router = useRouter();
+
+  // Clear any existing localStorage data on component mount
+  useEffect(() => {
+    const cleanupStorage = async () => {
+      // Clear localStorage items
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('session-expiry');
+      
+      // Sign out from NextAuth to clear any existing sessions
+      await signOut({ redirect: false });
+    };
+
+    cleanupStorage();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +51,7 @@ export default function LoginPage() {
         redirect: false,
       });
 
-      console.log('Login result:', result); // Debug log
+      console.log('Login result:', result);
 
       if (result?.error) {
         throw new Error(result.error === 'CredentialsSignin' 
@@ -46,8 +60,11 @@ export default function LoginPage() {
         );
       }
 
-      // Check if sign in was successful
       if (result?.ok && !result.error) {
+        // Set session expiry in localStorage (1 hour from now)
+        const expiryTime = Date.now() + (60 * 60 * 1000); // 1 hour
+        localStorage.setItem('session-expiry', expiryTime.toString());
+
         await Swal.fire({
           icon: 'success',
           title: 'Login Successful!',
@@ -56,7 +73,7 @@ export default function LoginPage() {
           showConfirmButton: false,
         });
 
-        // Use window.location to force a full page reload and establish session
+        // Redirect to customers page
         window.location.href = '/customers';
       } else {
         throw new Error('Login failed');
@@ -150,14 +167,12 @@ export default function LoginPage() {
                 </>
               ) : (
                 <>
-                  <span>{ <Lock />}</span>
+                  <span><Lock size={18} /></span>
                   <span>Sign In</span>
                 </>
               )}
             </button>
           </form>
-
-  
         </div>
 
         {/* App Info */}

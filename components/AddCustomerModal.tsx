@@ -148,7 +148,15 @@ export default function CustomerModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent multiple submissions
+    if (isLoading) {
+      console.log('⏳ Submission already in progress, skipping...');
+      return;
+    }
+    
     setIsLoading(true);
+    console.log('🚀 Starting form submission...');
   
     try {
       // Validate required fields
@@ -183,7 +191,6 @@ export default function CustomerModal({
       if (fileInputRef.current?.files?.[0]) {
         submitFormData.append("image", fileInputRef.current.files[0]);
       } else if (formData.image && !formData.image.startsWith('blob:')) {
-        // If we have a base64 image from drag & drop, convert it to a file
         const base64Response = await fetch(formData.image);
         const blob = await base64Response.blob();
         const file = new File([blob], 'profile-image.jpg', { type: 'image/jpeg' });
@@ -192,19 +199,19 @@ export default function CustomerModal({
   
       let response;
       if (isEditMode && customer) {
-        // Update existing customer
+        console.log('🔄 Updating existing customer');
         response = await fetch(`/api/customer/${customer.id}`, {
           method: "PUT",
           body: submitFormData,
         });
       } else {
+        console.log('➕ Creating new customer');
         response = await fetch("/api/customer", {
           method: "POST",
           body: submitFormData,
         });
       }
   
-      // Check if response is OK first
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`;
         try {
@@ -219,7 +226,6 @@ export default function CustomerModal({
         throw new Error(errorMessage);
       }
   
-      // Parse the successful response
       let resultCustomer;
       try {
         const responseText = await response.text();
@@ -233,7 +239,7 @@ export default function CustomerModal({
         throw new Error('Invalid response from server');
       }
   
-      console.log('✅ API response:', resultCustomer);
+      console.log('✅ API response received:', resultCustomer);
   
       // Call the appropriate callback
       if (isEditMode && customer && onUpdate) {
@@ -249,7 +255,7 @@ export default function CustomerModal({
           isActive: customer.isActive,
         });
       } else if (onSave) {
-     
+        console.log('💾 Calling onSave callback');
         onSave({
           name: formData.name,
           phone: formData.phone.trim() || null,
@@ -299,8 +305,9 @@ export default function CustomerModal({
         }
       }
   
-      // Success message
-      Swal.fire({
+      // Success message - only show once
+      console.log('🎉 Showing success modal');
+      await Swal.fire({
         icon: "success",
         title: `${isEditMode ? 'Customer Updated!' : 'Customer Added!'}`,
         text: `${formData.name} has been successfully ${isEditMode ? 'updated' : 'added'}.`,
@@ -309,9 +316,10 @@ export default function CustomerModal({
       });
   
       // onClose();
+  
     } catch (error) {
       console.error(`Error ${isEditMode ? 'updating' : 'creating'} customer:`, error);
-      Swal.fire({
+      await Swal.fire({
         icon: "error",
         title: `${isEditMode ? 'Update' : 'Creation'} Failed`,
         text: error instanceof Error ? error.message : `Failed to ${isEditMode ? 'update' : 'create'} customer. Please try again.`,
@@ -320,6 +328,7 @@ export default function CustomerModal({
       });
     } finally {
       setIsLoading(false);
+      console.log('🏁 Form submission completed');
     }
   };
 
